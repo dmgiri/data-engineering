@@ -1,0 +1,41 @@
+[
+  {
+    "id": "li-postgres-c001",
+    "subject": "postgres",
+    "topic": "Monitoring and automation",
+    "subtopic": "Daily database health-check reporting",
+    "title": "Automate a daily database health report",
+    "difficulty": "Advanced",
+    "type": "Scenario",
+    "minutes": 12,
+    "prompt": "How would you structure a daily PostgreSQL and MongoDB health check that processes results into a CSV, including error handling and maintainability?",
+    "answer": [
+      "Treat the checks as independent adapters behind a common interface: each connects with a timeout, gathers a defined set of measurements, and returns records with a timestamp, system, check name, value and status. For PostgreSQL, a successful authenticated SELECT 1 checks more than server reachability; pg_stat_activity can also support an agreed connection-usage check. Specify which MongoDB checks and thresholds the service owners need rather than inventing them from the question. Keep connection settings outside the code, use least-privilege credentials from a secret store, and close every connection even when a check fails. Exact PostgreSQL statistics fields and access privileges depend on the deployed version and role.",
+      "Run each adapter independently so a MongoDB timeout does not suppress the PostgreSQL result, and record failures explicitly rather than writing a misleading healthy value. Normalize results in a shared processing function, then write CSV with a fixed header using a CSV library; write to a temporary file and replace the destination only after a complete report is ready. Schedule the job daily, alert when the job or a check fails, avoid logging secrets, and test success, timeout, authentication failure and CSV escaping with controlled fixtures. Statistics may be cached within a transaction and cumulative counters may lag, so use short transactions and include collection time; a daily report alone cannot detect every short outage."
+    ],
+    "code": "",
+    "language": "python",
+    "pitfalls": [
+      "Treating an unreachable database as a healthy zero measurement.",
+      "Allowing one failed adapter to prevent all other checks from reporting.",
+      "Exposing credentials or assuming statistics update instantaneously."
+    ],
+    "followups": [
+      "How would you distinguish a failed check from a missing report?",
+      "Which checks and alert thresholds would you agree with service owners?"
+    ],
+    "sourceUrl": "https://www.postgresql.org/docs/current/monitoring-stats.html",
+    "provenance": {
+      "kind": "candidate-reported",
+      "url": "https://www.linkedin.com/posts/bhavansi_interviewpreparation-zaraai-python-activity-7358521465261969409-4l0k",
+      "author": "Seshadri Bhavanasi",
+      "title": "Exotel interview report",
+      "company": "Exotel Techcom Pvt Ltd",
+      "role": null,
+      "experience": null,
+      "accessedAt": "2026-11-18",
+      "scope": "reported-question",
+      "note": "Self-reported interview experience; not independently verified. Question paraphrased; answer independently written with explicitly stated example checks and assumptions."
+    }
+  }
+]

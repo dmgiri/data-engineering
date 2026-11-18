@@ -1,0 +1,990 @@
+[
+  {
+    "id": "li-sql-a001",
+    "subject": "sql",
+    "topic": "Business metrics",
+    "subtopic": "Calendar-year spending comparison",
+    "title": "Customer yearly growth",
+    "difficulty": "Intermediate",
+    "type": "Coding",
+    "minutes": 10,
+    "prompt": "Compare annual customer spending. Study assumptions: purchases(customer_id,product_id,purchased_on,quantity), products(product_id,price); static prices; adjacent calendar years.",
+    "answer": [
+      "Join purchase lines to the product reference, multiply quantity by price, and aggregate by customer and calendar year. Only after that aggregation should the previous year's spending be looked up. A self-join on the same customer and exactly one earlier year prevents a missing year from being mistaken for a consecutive comparison. Compute the percentage change against the earlier total, using a numeric multiplier so the result retains fractional percentages.",
+      "The supplied product price is assumed to apply to every historical purchase. Real sales systems normally need the price captured at purchase time or an effective-dated price lookup. A customer with no preceding calendar-year row has an unknown comparison here, rather than an assumed zero. NULLIF makes growth undefined when the earlier total is zero. Test multiple lines per year, a missing year, a zero earlier total, and a customer with only one observed year."
+    ],
+    "code": "-- PostgreSQL; Study assumptions: dates and numeric quantity/price are non-null.\n-- products.product_id is unique; prices are static for this exercise.\nWITH yearly AS (\n  SELECT p.customer_id, EXTRACT(YEAR FROM p.purchased_on)::int AS year,\n         SUM(p.quantity * d.price) AS spending\n  FROM purchases p\n  JOIN products d ON d.product_id = p.product_id\n  GROUP BY p.customer_id, EXTRACT(YEAR FROM p.purchased_on)::int\n)\nSELECT c.customer_id, c.year, c.spending,\n       b.spending AS prior_year_spending,\n       100.0 * (c.spending - b.spending) / NULLIF(b.spending, 0) AS growth_pct\nFROM yearly c\nLEFT JOIN yearly b ON b.customer_id = c.customer_id AND b.year = c.year - 1\nORDER BY c.customer_id, c.year;",
+    "pitfalls": [
+      "Comparing with the previous observed year when a calendar year is absent.",
+      "Applying today's product price to historical purchases without an explicit assumption."
+    ],
+    "followups": [
+      "Study extension: use the unit price recorded on each purchase.",
+      "Study extension: distinguish a missing year from a verified zero-spend year."
+    ],
+    "sourceUrl": "https://www.postgresql.org/docs/current/functions-datetime.html",
+    "language": "sql",
+    "provenance": {
+      "kind": "candidate-reported",
+      "scope": "reported-question",
+      "url": "https://www.linkedin.com/posts/gauransh-iitp_sqlinterview-dataanalytics-datascienceprep-activity-7355454489329324032-C6HH",
+      "author": "Gauransh Luthra, PMP®",
+      "title": "SQL interview questions from Data Analytics/Scientist interviews",
+      "role": "Data Analytics / Data Scientist",
+      "company": null,
+      "experience": null,
+      "accessedAt": "2026-11-18",
+      "note": "Unverified self-reported interview experience. Question paraphrased; schema and detailed rules are study assumptions; answer independently written."
+    }
+  },
+  {
+    "id": "li-sql-a002",
+    "subject": "sql",
+    "topic": "Window functions",
+    "subtopic": "Neighbor comparison with calendar adjacency",
+    "title": "Two low-stock days",
+    "difficulty": "Intermediate",
+    "type": "Coding",
+    "minutes": 10,
+    "prompt": "Detect sustained low inventory. Study assumptions: inventory(supplier_id,day,stock); one row per supplier/day; below 50 on adjacent dates.",
+    "answer": [
+      "Order each supplier's inventory observations by date and use LAG to bring the previous date and previous stock onto the current row. Both stock values must be below fifty, and the dates must be exactly one day apart. The date check is essential: two consecutive observations can be separated by a weekend or a missing extract. Return each supplier once even if a long low-stock period creates several qualifying adjacent pairs.",
+      "The study table contains a daily supplier-level stock total, not separate warehouse or product rows. Aggregate to that grain before applying the window if the actual input is more detailed. Do not treat a missing observation as low stock unless the business explicitly defines a carry-forward rule. Null stock is unknown and does not qualify. Validate exactly fifty, two low days, a three-day low run, and low observations separated by an unobserved date."
+    ],
+    "code": "-- PostgreSQL; Study assumptions: UNIQUE(supplier_id, day), day is date.\nWITH previous AS (\n  SELECT supplier_id, day, stock,\n         LAG(day) OVER (PARTITION BY supplier_id ORDER BY day) AS prior_day,\n         LAG(stock) OVER (PARTITION BY supplier_id ORDER BY day) AS prior_stock\n  FROM inventory\n)\nSELECT DISTINCT supplier_id\nFROM previous\nWHERE stock < 50 AND prior_stock < 50 AND day = prior_day + 1\nORDER BY supplier_id;",
+    "pitfalls": [
+      "Treating consecutive rows as consecutive calendar days.",
+      "Joining raw product-level stock rows before defining the supplier/day grain."
+    ],
+    "followups": [
+      "Study extension: return each low-stock period's boundaries.",
+      "Study extension: require a configurable number of low-stock days."
+    ],
+    "sourceUrl": "https://www.postgresql.org/docs/current/functions-window.html",
+    "language": "sql",
+    "provenance": {
+      "kind": "candidate-reported",
+      "scope": "reported-question",
+      "url": "https://www.linkedin.com/posts/gauransh-iitp_sqlinterview-dataanalytics-datascienceprep-activity-7355454489329324032-C6HH",
+      "author": "Gauransh Luthra, PMP®",
+      "title": "SQL interview questions from Data Analytics/Scientist interviews",
+      "role": "Data Analytics / Data Scientist",
+      "company": null,
+      "experience": null,
+      "accessedAt": "2026-11-18",
+      "note": "Unverified self-reported interview experience. Question paraphrased; schema and detailed rules are study assumptions; answer independently written."
+    }
+  },
+  {
+    "id": "li-sql-a003",
+    "subject": "sql",
+    "topic": "Conditional logic",
+    "subtopic": "Row-wise column correction with CASE",
+    "title": "Correct food columns",
+    "difficulty": "Intermediate",
+    "type": "Coding",
+    "minutes": 8,
+    "prompt": "Realign food fields. Study assumptions: menu(id,food_a,food_b,swapped); swap the two values only where swapped=true.",
+    "answer": [
+      "The source describes correcting misaligned food columns with CASE but omits the original layout. This study version supplies a Boolean flag that identifies affected rows. Use one CASE expression for each output column, selecting the opposite original value when the flag is true. Both expressions read the same input row, so no temporary application variable is needed. A SELECT first makes the intended corrected result easy to inspect.",
+      "Rows with a false or unknown flag retain their original values under this explicit contract. A null food value moves to the other column when a flagged row is swapped; it is not replaced with an invented food. A production correction would also need a reliable rule for determining which rows are misaligned. Running the same swap twice restores the original bad arrangement, so an update must either clear the marker or use a correction history to prevent repeated application."
+    ],
+    "code": "-- PostgreSQL; Study assumptions: menu(id, food_a text, food_b text, swapped boolean).\nSELECT id,\n       CASE WHEN swapped IS TRUE THEN food_b ELSE food_a END AS corrected_food_a,\n       CASE WHEN swapped IS TRUE THEN food_a ELSE food_b END AS corrected_food_b\nFROM menu\nORDER BY id;",
+    "pitfalls": [
+      "Inventing a rule for deciding which rows are misaligned.",
+      "Repeating a swap update and unintentionally reversing the correction."
+    ],
+    "followups": [
+      "Study extension: apply the correction and clear its marker atomically.",
+      "Study extension: validate the affected rows against an authoritative menu mapping."
+    ],
+    "sourceUrl": "https://www.postgresql.org/docs/current/functions-conditional.html",
+    "language": "sql",
+    "provenance": {
+      "kind": "candidate-reported",
+      "scope": "reported-question",
+      "url": "https://www.linkedin.com/posts/gauransh-iitp_sqlinterview-dataanalytics-datascienceprep-activity-7355454489329324032-C6HH",
+      "author": "Gauransh Luthra, PMP®",
+      "title": "SQL interview questions from Data Analytics/Scientist interviews",
+      "role": "Data Analytics / Data Scientist",
+      "company": null,
+      "experience": null,
+      "accessedAt": "2026-11-18",
+      "note": "Unverified self-reported interview experience. Question paraphrased; schema and detailed rules are study assumptions; answer independently written."
+    }
+  },
+  {
+    "id": "li-sql-a004",
+    "subject": "sql",
+    "topic": "Aggregation",
+    "subtopic": "Month grouping and minimum sample size",
+    "title": "Monthly restaurant ratings",
+    "difficulty": "Intermediate",
+    "type": "Coding",
+    "minutes": 8,
+    "prompt": "Summarize ratings by month. Study assumptions: reviews(restaurant_id,reviewed_on,rating); require two non-null ratings per restaurant/month.",
+    "answer": [
+      "Reduce review dates to the first day of their month, then group by restaurant and that complete month key. Calculate AVG for the score and use HAVING to retain groups with at least two known ratings. COUNT(rating), rather than COUNT(*), makes the minimum sample size agree with the values that contribute to AVG. Keeping the year in the month key prevents January from different years being combined.",
+      "The supplied date column already represents the reporting calendar. With timestamp inputs, choose the business timezone before assigning a month. A restaurant with only one scored review is omitted even if it has several unscored comments. The output contains observed qualifying months; it does not manufacture zero ratings for restaurants with no reviews. Confirm the rating scale and whether edited or deleted reviews belong in the population before adding filters that would change the average."
+    ],
+    "code": "-- PostgreSQL; Study assumptions: reviewed_on is date; rating is numeric.\nSELECT restaurant_id,\n       DATE_TRUNC('month', reviewed_on)::date AS month,\n       COUNT(rating) AS rating_count, AVG(rating) AS average_rating\nFROM reviews\nWHERE reviewed_on IS NOT NULL\nGROUP BY restaurant_id, DATE_TRUNC('month', reviewed_on)::date\nHAVING COUNT(rating) >= 2\nORDER BY restaurant_id, month;",
+    "pitfalls": [
+      "Grouping by month number without year.",
+      "Counting unscored reviews toward the two-rating threshold."
+    ],
+    "followups": [
+      "Study extension: include review volume beside the average.",
+      "Study extension: compare each month against the restaurant's overall average."
+    ],
+    "sourceUrl": "https://www.postgresql.org/docs/current/functions-aggregate.html",
+    "language": "sql",
+    "provenance": {
+      "kind": "candidate-reported",
+      "scope": "reported-question",
+      "url": "https://www.linkedin.com/posts/gauransh-iitp_sqlinterview-dataanalytics-datascienceprep-activity-7355454489329324032-C6HH",
+      "author": "Gauransh Luthra, PMP®",
+      "title": "SQL interview questions from Data Analytics/Scientist interviews",
+      "role": "Data Analytics / Data Scientist",
+      "company": null,
+      "experience": null,
+      "accessedAt": "2026-11-18",
+      "note": "Unverified self-reported interview experience. Question paraphrased; schema and detailed rules are study assumptions; answer independently written."
+    }
+  },
+  {
+    "id": "li-sql-a005",
+    "subject": "sql",
+    "topic": "Temporal reporting",
+    "subtopic": "Order schema and inclusive monthly counts",
+    "title": "Restaurant monthly orders",
+    "difficulty": "Intermediate",
+    "type": "Coding",
+    "minutes": 10,
+    "prompt": "Count restaurant orders. Study assumptions: restaurants(id), customers(id), orders(id,restaurant_id,customer_id,ordered_on); report October 2026, including zero orders.",
+    "answer": [
+      "Use separate restaurant and customer dimensions, with each order referencing one row in each dimension. For the supplied reporting month, start from restaurants and left join only orders whose dates fall inside the month. Count the order identifier so a restaurant's unmatched placeholder row contributes zero. The lower bound is inclusive and the next month's first day is exclusive, which is also a useful pattern when the input later becomes a timestamp.",
+      "Place the order-date restriction in the join condition so restaurants without qualifying orders remain in the output. Putting that condition in WHERE would discard their null-extended rows. The study query counts all stored orders; cancellations, test transactions, and completion status require additional agreed rules. Order identifiers must be unique, and joining order lines or review rows into this aggregation could multiply an order. Aggregate those extra child tables separately before joining them into a restaurant report."
+    ],
+    "code": "-- PostgreSQL; Study assumptions: the following is an illustrative schema.\nCREATE TABLE restaurants (id bigint PRIMARY KEY);\nCREATE TABLE customers (id bigint PRIMARY KEY);\nCREATE TABLE orders (\n  id bigint PRIMARY KEY,\n  restaurant_id bigint NOT NULL REFERENCES restaurants(id),\n  customer_id bigint NOT NULL REFERENCES customers(id),\n  ordered_on date NOT NULL\n);\n\nSELECT r.id AS restaurant_id, COUNT(o.id) AS order_count\nFROM restaurants r\nLEFT JOIN orders o ON o.restaurant_id = r.id\n                  AND o.ordered_on >= DATE '2026-10-01'\n                  AND o.ordered_on < DATE '2026-11-01'\nGROUP BY r.id\nORDER BY r.id;",
+    "pitfalls": [
+      "Filtering the right-hand table in WHERE and dropping zero-order restaurants.",
+      "Counting joined order-line rows instead of orders."
+    ],
+    "followups": [
+      "Study extension: generate one output row for every restaurant and reporting month.",
+      "Study extension: count completed and canceled orders separately."
+    ],
+    "sourceUrl": "https://www.postgresql.org/docs/current/queries-table-expressions.html",
+    "language": "sql",
+    "provenance": {
+      "kind": "candidate-reported",
+      "scope": "reported-question",
+      "url": "https://www.linkedin.com/posts/gauransh-iitp_sqlinterview-dataanalytics-datascienceprep-activity-7355454489329324032-C6HH",
+      "author": "Gauransh Luthra, PMP®",
+      "title": "SQL interview questions from Data Analytics/Scientist interviews",
+      "role": "Data Analytics / Data Scientist",
+      "company": null,
+      "experience": null,
+      "accessedAt": "2026-11-18",
+      "note": "Unverified self-reported interview experience. Question paraphrased; schema and detailed rules are study assumptions; answer independently written."
+    }
+  },
+  {
+    "id": "li-sql-a006",
+    "subject": "sql",
+    "topic": "Subqueries",
+    "subtopic": "Second distinct value with nested MAX",
+    "title": "Second salary level",
+    "difficulty": "Intermediate",
+    "type": "Coding",
+    "minutes": 8,
+    "prompt": "Return second-highest pay. Study assumptions: employee(id,salary); second distinct non-null salary, with NULL when absent.",
+    "answer": [
+      "First determine the highest known salary. Restrict the next aggregation to salaries strictly below that value, then take the maximum of the remaining values. The strict comparison removes every employee tied at the highest level, so the result represents the second distinct salary rather than the second row in a sorted list. The outer MAX returns one scalar row even when there is no qualifying salary.",
+      "A table with no known salary or only one distinct known salary therefore returns null. That is different from returning zero, which could be a legitimate salary and would hide the absence of a second level. The query intentionally returns the salary value, not employee details. If the output should include every employee at that level, join or filter the employee table using the calculated value. Keep tie behavior explicit when comparing this approach with row numbering."
+    ],
+    "code": "-- PostgreSQL; Study assumptions: employee(id bigint PRIMARY KEY, salary numeric).\nSELECT MAX(salary) AS second_highest_salary\nFROM employee\nWHERE salary < (SELECT MAX(salary) FROM employee);",
+    "pitfalls": [
+      "Returning the second employee row when the two highest salaries tie.",
+      "Replacing an absent second salary with zero without a requirement."
+    ],
+    "followups": [
+      "Study extension: return all employees receiving the second distinct salary.",
+      "Study extension: generalize the query to an arbitrary distinct salary level."
+    ],
+    "sourceUrl": "https://www.postgresql.org/docs/current/functions-aggregate.html",
+    "language": "sql",
+    "provenance": {
+      "kind": "candidate-reported",
+      "scope": "reported-question",
+      "url": "https://www.linkedin.com/posts/gauransh-iitp_sqlinterview-dataanalytics-datascienceprep-activity-7355454489329324032-C6HH",
+      "author": "Gauransh Luthra, PMP®",
+      "title": "SQL interview questions from Data Analytics/Scientist interviews",
+      "role": "Data Analytics / Data Scientist",
+      "company": null,
+      "experience": null,
+      "accessedAt": "2026-11-18",
+      "note": "Unverified self-reported interview experience. Question paraphrased; schema and detailed rules are study assumptions; answer independently written."
+    }
+  },
+  {
+    "id": "li-sql-a007",
+    "subject": "sql",
+    "topic": "Business metrics",
+    "subtopic": "Range of monthly issuance totals",
+    "title": "Card issuance range",
+    "difficulty": "Intermediate",
+    "type": "Coding",
+    "minutes": 8,
+    "prompt": "Compare card-volume spread. Study assumptions: issuances(card_type,month,issued_count); unique card/month; report max minus min across observed months.",
+    "answer": [
+      "Group the monthly issuance rows by card type and subtract the smallest observed monthly count from the largest. This measures the range, which the source informally calls variance; it is not statistical variance. Order by the calculated range descending to show card types with the largest observed swings. A secondary card-type ordering gives a stable result when several types have equal ranges.",
+      "The study input already contains one complete count per card and month. If the input instead contains individual issuance events, aggregate those events into monthly totals first. A missing month is not automatically a zero count, so this query considers only recorded months. To include verified zero-issuance months, build a card-by-calendar scaffold before calculating the range. Null counts are unknown and ignored by MIN and MAX; an all-null group has an unknown range."
+    ],
+    "code": "-- PostgreSQL; Study assumptions: UNIQUE(card_type, month), issued_count integer.\nSELECT card_type,\n       MAX(issued_count) - MIN(issued_count) AS issuance_range\nFROM issuances\nGROUP BY card_type\nORDER BY issuance_range DESC NULLS LAST, card_type;",
+    "pitfalls": [
+      "Using VARIANCE when the requested calculation is maximum minus minimum.",
+      "Silently interpreting an absent monthly row as zero issuance."
+    ],
+    "followups": [
+      "Study extension: include all calendar months, with an agreed zero-fill rule.",
+      "Study extension: report the specific months containing the extremes."
+    ],
+    "sourceUrl": "https://www.postgresql.org/docs/current/functions-aggregate.html",
+    "language": "sql",
+    "provenance": {
+      "kind": "candidate-reported",
+      "scope": "reported-question",
+      "url": "https://www.linkedin.com/posts/gauransh-iitp_sqlinterview-dataanalytics-datascienceprep-activity-7355454489329324032-C6HH",
+      "author": "Gauransh Luthra, PMP®",
+      "title": "SQL interview questions from Data Analytics/Scientist interviews",
+      "role": "Data Analytics / Data Scientist",
+      "company": null,
+      "experience": null,
+      "accessedAt": "2026-11-18",
+      "note": "Unverified self-reported interview experience. Question paraphrased; schema and detailed rules are study assumptions; answer independently written."
+    }
+  },
+  {
+    "id": "li-sql-a008",
+    "subject": "sql",
+    "topic": "Window functions",
+    "subtopic": "Adjacent seat exchange with LAG and LEAD",
+    "title": "Exchange adjacent seats",
+    "difficulty": "Intermediate",
+    "type": "Coding",
+    "minutes": 10,
+    "prompt": "Swap neighboring students. Study assumptions: seats(id,student); consecutive IDs from 1, non-null students; final unpaired seat stays unchanged.",
+    "answer": [
+      "For each seat, retrieve the neighboring student names in seat-number order. Odd-numbered seats take the following student's name, while even-numbered seats take the preceding student's name. When the final seat has an odd identifier and no following row, keep its original student. This produces the reassigned seating result while retaining every original seat identifier.",
+      "The parity shortcut depends on the study promise that identifiers are consecutive and begin at one. If identifiers have gaps, assign positions with ROW_NUMBER and pair those positions instead. Student names are non-null in this version, allowing COALESCE to identify the missing final neighbor without confusing it with an actual null student. Verify zero rows, one seat, two seats, and an odd number of seats. This SELECT previews the reassignment; a persistent update needs an atomic mapping from old seats to new students."
+    ],
+    "code": "-- PostgreSQL; Study assumptions: seats(id integer PRIMARY KEY, student text NOT NULL).\nWITH adjacent AS (\n  SELECT id, student,\n         LAG(student) OVER (ORDER BY id) AS previous_student,\n         LEAD(student) OVER (ORDER BY id) AS next_student\n  FROM seats\n)\nSELECT id,\n       CASE WHEN id % 2 = 1 THEN COALESCE(next_student, student)\n            ELSE previous_student END AS student\nFROM adjacent\nORDER BY id;",
+    "pitfalls": [
+      "Using identifier parity when the identifiers have gaps.",
+      "Treating a real null student as proof that the neighboring row is absent."
+    ],
+    "followups": [
+      "Study extension: swap by sorted position when seat IDs are sparse.",
+      "Study extension: update the stored assignments using one atomic mapping."
+    ],
+    "sourceUrl": "https://www.postgresql.org/docs/current/functions-window.html",
+    "language": "sql",
+    "provenance": {
+      "kind": "candidate-reported",
+      "scope": "reported-question",
+      "url": "https://www.linkedin.com/posts/gauransh-iitp_sqlinterview-dataanalytics-datascienceprep-activity-7355454489329324032-C6HH",
+      "author": "Gauransh Luthra, PMP®",
+      "title": "SQL interview questions from Data Analytics/Scientist interviews",
+      "role": "Data Analytics / Data Scientist",
+      "company": null,
+      "experience": null,
+      "accessedAt": "2026-11-18",
+      "note": "Unverified self-reported interview experience. Question paraphrased; schema and detailed rules are study assumptions; answer independently written."
+    }
+  },
+  {
+    "id": "li-sql-a009",
+    "subject": "sql",
+    "topic": "Joins",
+    "subtopic": "Anti-existence and null-safe membership",
+    "title": "Customers without orders",
+    "difficulty": "Intermediate",
+    "type": "Coding",
+    "minutes": 8,
+    "prompt": "Find signups without orders. Study assumptions: customers(id), orders(id,customer_id); any stored order counts.",
+    "answer": [
+      "Start from the customer table and retain a customer only when no order references that customer's identifier. A correlated NOT EXISTS expresses that requirement directly and returns each qualifying customer once, regardless of the number of unrelated orders. It also avoids the null-related behavior of NOT IN when the order table contains an unknown customer identifier.",
+      "The population is registered customers, so an order with a missing or invalid customer identifier does not create a new customer in the result. The study contract treats canceled or unpaid orders as orders because no status rule was reported. If the intended meaning is never completed a purchase, add that status condition inside the subquery. For a large order table, an index beginning with customer_id can help the existence lookup, but the execution plan should confirm the chosen strategy."
+    ],
+    "code": "-- PostgreSQL; Study assumptions: customers.id is a non-null primary key.\nSELECT c.id AS customer_id\nFROM customers c\nWHERE NOT EXISTS (\n  SELECT 1 FROM orders o WHERE o.customer_id = c.id\n)\nORDER BY c.id;",
+    "pitfalls": [
+      "Using NOT IN over nullable order customer identifiers.",
+      "Counting only completed orders without defining that narrower contract."
+    ],
+    "followups": [
+      "Study extension: find customers with no completed order.",
+      "Study extension: find customers inactive during a supplied date interval."
+    ],
+    "sourceUrl": "https://www.postgresql.org/docs/current/functions-subquery.html",
+    "language": "sql",
+    "provenance": {
+      "kind": "candidate-reported",
+      "scope": "reported-question",
+      "url": "https://www.linkedin.com/posts/gauransh-iitp_sqlinterview-dataanalytics-datascienceprep-activity-7355454489329324032-C6HH",
+      "author": "Gauransh Luthra, PMP®",
+      "title": "SQL interview questions from Data Analytics/Scientist interviews",
+      "role": "Data Analytics / Data Scientist",
+      "company": null,
+      "experience": null,
+      "accessedAt": "2026-11-18",
+      "note": "Unverified self-reported interview experience. Question paraphrased; schema and detailed rules are study assumptions; answer independently written."
+    }
+  },
+  {
+    "id": "li-sql-a010",
+    "subject": "sql",
+    "topic": "Subqueries",
+    "subtopic": "Cumulative daily sum without windows",
+    "title": "Running total without windows",
+    "difficulty": "Intermediate",
+    "type": "Coding",
+    "minutes": 10,
+    "prompt": "Calculate cumulative sales without windows. Study assumptions: sales(id,sold_on,amount); one result per date, including every sale on that date.",
+    "answer": [
+      "Aggregate transactions to one sales total per date, then use a correlated subquery to sum daily totals up to the current date. The less-than-or-equal comparison includes the full current day, so tied transaction dates cannot produce an arbitrary within-day ordering. No window function is used. The final result contains the daily amount and the amount accumulated from the earliest stored day through that date.",
+      "This form can repeat substantial work as the number of dates grows. An index, a changed execution plan, or preaggregation can affect actual cost, so avoid claiming an unconditional complexity for every database execution. Inspect the plan and measure representative data. If the requirement instead needs a balance after each individual transaction, supply a unique ordering key and correlate on that complete order. A window SUM with an explicit frame is the usual alternative when the interview restriction is lifted."
+    ],
+    "code": "-- PostgreSQL; Study assumptions: sold_on is a non-null date, amount numeric NOT NULL.\nWITH daily AS (\n  SELECT sold_on, SUM(amount) AS daily_sales\n  FROM sales\n  GROUP BY sold_on\n)\nSELECT d.sold_on, d.daily_sales,\n       (SELECT SUM(p.daily_sales) FROM daily p WHERE p.sold_on <= d.sold_on)\n         AS running_sales\nFROM daily d\nORDER BY d.sold_on;",
+    "pitfalls": [
+      "Leaving same-date transaction ordering undefined for a row-level running total.",
+      "Assuming the correlated formulation has the same cost under every execution plan."
+    ],
+    "followups": [
+      "Study extension: compare the plan against an explicit-frame window SUM.",
+      "Study extension: calculate a separate cumulative total for each store."
+    ],
+    "sourceUrl": "https://www.postgresql.org/docs/current/functions-subquery.html",
+    "language": "sql",
+    "provenance": {
+      "kind": "candidate-reported",
+      "scope": "reported-question",
+      "url": "https://www.linkedin.com/posts/ketangoyal12_sql-dataanalytics-marketinganalytics-activity-7321526055855398913-V7G1",
+      "author": "Ketan Goyal",
+      "title": "Running total without window functions in a recent SQL interview",
+      "role": null,
+      "company": null,
+      "experience": null,
+      "accessedAt": "2026-11-18",
+      "note": "Unverified self-reported interview experience. Question paraphrased; schema and detailed rules are study assumptions; answer independently written."
+    }
+  },
+  {
+    "id": "li-sql-a011",
+    "subject": "sql",
+    "topic": "Business metrics",
+    "subtopic": "Coupon-free spending decline over consecutive months",
+    "title": "Consecutive-month spending decline",
+    "difficulty": "Advanced",
+    "type": "Coding",
+    "minutes": 12,
+    "prompt": "Find falling customer spend using two CTEs. Study assumptions: purchases(customer_id,purchased_on,amount,coupon_code); both adjacent calendar months entirely coupon-free.",
+    "answer": [
+      "The reported scenario combines a spending decline, consecutive purchasing months, absence of coupons, and a two-CTE window solution. First aggregate all purchase rows by customer and month, recording both spending and whether every purchase lacks a coupon. In the second CTE, use LAG to retrieve the previous observed month, its spending, and its coupon status. The final filter requires exactly one calendar month of separation, smaller current spending, and coupon-free flags for both months.",
+      "Keep coupon-bearing purchases in the first aggregation so they can disqualify their month. Filtering them out beforehand would let a mixed month masquerade as coupon-free and could change its spending total. Here null means no coupon, while an empty string is still a supplied code; normalize blanks only under an agreed rule. The full month key handles December-to-January transitions. Missing months break consecutiveness even though LAG can still retrieve an earlier observed month."
+    ],
+    "code": "-- PostgreSQL; Study assumptions: purchased_on date, amount numeric NOT NULL.\n-- No coupon means coupon_code IS NULL; both compared months must qualify.\nWITH monthly AS (\n  SELECT customer_id, DATE_TRUNC('month', purchased_on)::date AS month,\n         SUM(amount) AS spending, BOOL_AND(coupon_code IS NULL) AS coupon_free\n  FROM purchases\n  GROUP BY customer_id, DATE_TRUNC('month', purchased_on)::date\n), compared AS (\n  SELECT *,\n         LAG(month) OVER w AS previous_month,\n         LAG(spending) OVER w AS previous_spending,\n         LAG(coupon_free) OVER w AS previous_coupon_free\n  FROM monthly\n  WINDOW w AS (PARTITION BY customer_id ORDER BY month)\n)\nSELECT customer_id, month, spending, previous_spending\nFROM compared\nWHERE month = (previous_month + INTERVAL '1 month')::date\n  AND spending < previous_spending\n  AND coupon_free AND previous_coupon_free\nORDER BY customer_id, month;",
+    "pitfalls": [
+      "Removing coupon purchases before checking whether the whole month is coupon-free.",
+      "Comparing nonadjacent calendar months merely because their rows are adjacent."
+    ],
+    "followups": [
+      "Study extension: define a different coupon rule and explain which rows change.",
+      "Study extension: detect a decline over several consecutive months."
+    ],
+    "sourceUrl": "https://www.postgresql.org/docs/current/functions-window.html",
+    "language": "sql",
+    "provenance": {
+      "kind": "candidate-reported",
+      "scope": "reported-question",
+      "url": "https://www.linkedin.com/posts/sudharsancn_every-time-i-scroll-linkedin-i-see-posts-activity-7381901233219051520-NM3d",
+      "author": "Sudharsan CN",
+      "title": "Two SQL interview scenarios",
+      "role": null,
+      "company": null,
+      "experience": null,
+      "accessedAt": "2026-11-18",
+      "note": "Unverified self-reported interview experience. Question paraphrased; schema and detailed rules are study assumptions; answer independently written. The source identifies the first interview as a Data Analyst internship; it does not state the second interview's exact role."
+    }
+  },
+  {
+    "id": "li-sql-a012",
+    "subject": "sql",
+    "topic": "Temporal reporting",
+    "subtopic": "Complete calendar-month coverage",
+    "title": "Purchases in every month",
+    "difficulty": "Intermediate",
+    "type": "Coding",
+    "minutes": 10,
+    "prompt": "Find year-round buyers. Study assumptions: customers(id,name), sales(id,customer_id,sold_on); at least one purchase in every month of 2024.",
+    "answer": [
+      "Limit sales to the requested calendar year and count distinct month keys for each customer. A customer qualifies when that count is twelve, regardless of how many purchases they made within any one month. Join the qualifying identifiers back to the customer dimension to return names. The bounded date range keeps purchases from other years from satisfying a missing month in the target year.",
+      "The task asks for purchase presence, not a minimum monthly amount, so refunds and zero-value sales need an explicit policy if they should be excluded. Counting raw sales rows is insufficient: twelve orders in January cover only one month. This approach relies on the fixed twelve-month calendar year. For a configurable list of business periods, compare against a period dimension or use relational division so the required set is defined separately from the observed sales."
+    ],
+    "code": "-- PostgreSQL; Study assumptions: sold_on is date; each row is a qualifying purchase.\nWITH covered AS (\n  SELECT customer_id\n  FROM sales\n  WHERE sold_on >= DATE '2024-01-01' AND sold_on < DATE '2025-01-01'\n  GROUP BY customer_id\n  HAVING COUNT(DISTINCT DATE_TRUNC('month', sold_on)) = 12\n)\nSELECT c.id AS customer_id, c.name\nFROM customers c\nJOIN covered q ON q.customer_id = c.id\nORDER BY c.id;",
+    "pitfalls": [
+      "Counting twelve purchases instead of twelve distinct months.",
+      "Allowing months from different years to satisfy the target year's coverage."
+    ],
+    "followups": [
+      "Study extension: require purchases in each month of a configurable reporting interval.",
+      "Study extension: report each customer's missing months."
+    ],
+    "sourceUrl": "https://www.postgresql.org/docs/current/queries-table-expressions.html",
+    "language": "sql",
+    "provenance": {
+      "kind": "candidate-reported",
+      "scope": "reported-question",
+      "url": "https://www.linkedin.com/posts/hairav-kumar-0835b6184_sql-dataanalytics-businessanalytics-activity-7385898927985758208-1VcO",
+      "author": "Hairav Kumar",
+      "title": "SQL question from a Business Analyst interview",
+      "role": "Business Analyst",
+      "company": null,
+      "experience": null,
+      "accessedAt": "2026-11-18",
+      "note": "Unverified self-reported interview experience. Question paraphrased; schema and detailed rules are study assumptions; answer independently written."
+    }
+  },
+  {
+    "id": "li-sql-a013",
+    "subject": "sql",
+    "topic": "Gaps and islands",
+    "subtopic": "Activity streak followed by a fully observed inactivity interval",
+    "title": "Active streak then inactivity",
+    "difficulty": "Advanced",
+    "type": "Coding",
+    "minutes": 12,
+    "prompt": "Find engaged users who disappear. Study assumptions: user_activity(user_id,activity_date); activity each day for 7+ days, then 30 inactive days; observed through 2026-11-17.",
+    "answer": [
+      "Deduplicate activity dates per user, then subtract an ordered row number from each date to identify uninterrupted daily islands. Aggregate each island into its start date, end date, and day count. Retain islands lasting at least seven days and verify that no activity occurs during the thirty days immediately after the island ends. Return each qualifying user once, even if their history contains more than one matching period.",
+      "The source does not quantify highly active, so this study version means at least one event per calendar day. The observation cutoff is essential: a streak that ended yesterday has not yet demonstrated thirty inactive days. Require the end plus thirty days to fall within the fully observed period. All event types count as activity here. Normalize timestamps to the reporting timezone before deduplicating dates, and distinguish missing ingestion data from confirmed user inactivity."
+    ],
+    "code": "-- PostgreSQL; Study assumptions: activity_date is a non-null calendar date.\nWITH days AS (\n  SELECT DISTINCT user_id, activity_date\n  FROM user_activity\n  WHERE activity_date <= DATE '2026-11-17'\n), islands AS (\n  SELECT user_id, activity_date,\n         activity_date - (ROW_NUMBER() OVER (\n           PARTITION BY user_id ORDER BY activity_date))::int AS island\n  FROM days\n), streaks AS (\n  SELECT user_id, MIN(activity_date) AS streak_start,\n         MAX(activity_date) AS streak_end, COUNT(*) AS day_count\n  FROM islands\n  GROUP BY user_id, island\n  HAVING COUNT(*) >= 7\n)\nSELECT DISTINCT s.user_id\nFROM streaks s\nWHERE s.streak_end + 30 <= DATE '2026-11-17'\n  AND NOT EXISTS (\n    SELECT 1 FROM days d\n    WHERE d.user_id = s.user_id\n      AND d.activity_date > s.streak_end\n      AND d.activity_date <= s.streak_end + 30\n  )\nORDER BY s.user_id;",
+    "pitfalls": [
+      "Labeling a recent streak inactive before thirty subsequent days have been observed.",
+      "Letting several events on one date inflate the streak length."
+    ],
+    "followups": [
+      "Study extension: define highly active as a minimum event count each day.",
+      "Study extension: measure how many qualifying users later return."
+    ],
+    "sourceUrl": "https://www.postgresql.org/docs/current/tutorial-window.html",
+    "language": "sql",
+    "provenance": {
+      "kind": "candidate-reported",
+      "scope": "reported-question",
+      "url": "https://www.linkedin.com/posts/priyanshub79_sqlinterview-dataengineering-dataanalytics-activity-7425052738281091072-YKJb",
+      "author": "Priyanshu Bhardwaj",
+      "title": "Nagarro Senior Data Engineer interview activity-streak question",
+      "role": "Senior Data Engineer",
+      "company": "Nagarro",
+      "experience": null,
+      "accessedAt": "2026-11-18",
+      "note": "Unverified self-reported interview experience. Question paraphrased; schema and detailed rules are study assumptions; answer independently written."
+    }
+  },
+  {
+    "id": "li-sql-a014",
+    "subject": "sql",
+    "topic": "Gaps and islands",
+    "subtopic": "Consecutive absence-day runs",
+    "title": "Three-day absences",
+    "difficulty": "Intermediate",
+    "type": "Coding",
+    "minutes": 10,
+    "prompt": "Find absence streaks. Study assumptions: attendance(employee_id,day,absent); three consecutive calendar days; deduplicate dates.",
+    "answer": [
+      "Select explicitly absent days and deduplicate employee-date pairs before looking for streaks. Within each employee, subtract the sequential row number from the date. That derived date stays constant across an unbroken sequence of calendar days and changes when a day is skipped. Group by the employee and derived key, then keep groups with three or more dates. Return the boundaries and duration to make each qualifying absence period inspectable.",
+      "This exercise assumes calendar-day attendance rather than a Monday-to-Friday work schedule. Friday and Monday do not form an uninterrupted calendar sequence. For business-day absence, use a working-calendar index in place of the raw date. A missing attendance record is not automatically an absence; the input flag must identify confirmed absences. Conflicting present and absent records for the same employee-day need upstream reconciliation, since deduplicating only absent rows cannot resolve contradictory evidence."
+    ],
+    "code": "-- PostgreSQL; Study assumptions: day is date, absent is boolean.\nWITH absent_days AS (\n  SELECT DISTINCT employee_id, day FROM attendance WHERE absent IS TRUE\n), islands AS (\n  SELECT employee_id, day,\n         day - (ROW_NUMBER() OVER (PARTITION BY employee_id ORDER BY day))::int AS island\n  FROM absent_days\n)\nSELECT employee_id, MIN(day) AS start_day, MAX(day) AS end_day, COUNT(*) AS days_absent\nFROM islands\nGROUP BY employee_id, island\nHAVING COUNT(*) >= 3\nORDER BY employee_id, start_day;",
+    "pitfalls": [
+      "Treating missing attendance rows as confirmed absences.",
+      "Using calendar adjacency when the business means consecutive working days."
+    ],
+    "followups": [
+      "Study extension: use an explicit working-day calendar.",
+      "Study extension: resolve contradictory attendance events before detecting streaks."
+    ],
+    "sourceUrl": "https://www.postgresql.org/docs/current/functions-datetime.html",
+    "language": "sql",
+    "provenance": {
+      "kind": "candidate-reported",
+      "scope": "reported-question",
+      "url": "https://www.linkedin.com/posts/rabi-sankar-mahata_i-thought-i-knew-sql-until-my-interviewer-activity-7390002172161114112-I-4I",
+      "author": "Rabi Sankar Mahata",
+      "title": "Self-reported SQL interview question list",
+      "role": null,
+      "company": null,
+      "experience": null,
+      "accessedAt": "2026-11-18",
+      "note": "Unverified self-reported interview experience. Question paraphrased; schema and detailed rules are study assumptions; answer independently written. Self-reported question list; employer and interview context not stated."
+    }
+  },
+  {
+    "id": "li-sql-a015",
+    "subject": "sql",
+    "topic": "Data completeness",
+    "subtopic": "Generated sequence and anti-existence",
+    "title": "Missing sequence values",
+    "difficulty": "Intermediate",
+    "type": "Coding",
+    "minutes": 8,
+    "prompt": "Detect internal gaps. Study assumptions: numbers(value integer); expected range is the observed minimum through maximum.",
+    "answer": [
+      "Generate every integer between the observed minimum and maximum, then retain generated values absent from the stored table. NOT EXISTS expresses the anti-match without multiplying results when the source contains duplicate values. The expected range is an explicit study assumption: this query identifies internal gaps, not missing values before the smallest or after the largest stored identifier.",
+      "An empty table or one containing only nulls has no observed bounds, and PostgreSQL generate_series returns no rows for null arguments. A single known value has no internal missing values. Very wide ranges can produce a large intermediate series, so a gap-boundary approach using neighboring values may be more suitable when the requirement only asks for missing intervals. In operational systems, identifier gaps may be normal after rollbacks or deletions; detecting a gap does not by itself prove lost business data."
+    ],
+    "code": "-- PostgreSQL; Study assumptions: numbers(value integer).\nWITH bounds AS (\n  SELECT MIN(value) AS low, MAX(value) AS high FROM numbers\n)\nSELECT g.value AS missing_value\nFROM bounds b\nCROSS JOIN LATERAL GENERATE_SERIES(b.low, b.high) AS g(value)\nWHERE NOT EXISTS (SELECT 1 FROM numbers n WHERE n.value = g.value)\nORDER BY g.value;",
+    "pitfalls": [
+      "Assuming observed endpoints are the true business-required endpoints.",
+      "Expanding a huge numeric range when interval boundaries would suffice."
+    ],
+    "followups": [
+      "Study extension: supply explicit expected lower and upper bounds.",
+      "Study extension: return missing intervals without enumerating every missing value."
+    ],
+    "sourceUrl": "https://www.postgresql.org/docs/current/functions-srf.html",
+    "language": "sql",
+    "provenance": {
+      "kind": "candidate-reported",
+      "scope": "reported-question",
+      "url": "https://www.linkedin.com/posts/rabi-sankar-mahata_i-thought-i-knew-sql-until-my-interviewer-activity-7390002172161114112-I-4I",
+      "author": "Rabi Sankar Mahata",
+      "title": "Self-reported SQL interview question list",
+      "role": null,
+      "company": null,
+      "experience": null,
+      "accessedAt": "2026-11-18",
+      "note": "Unverified self-reported interview experience. Question paraphrased; schema and detailed rules are study assumptions; answer independently written. Self-reported question list; employer and interview context not stated."
+    }
+  },
+  {
+    "id": "li-sql-a016",
+    "subject": "sql",
+    "topic": "Window functions",
+    "subtopic": "Cumulative share within a group",
+    "title": "Cumulative regional share",
+    "difficulty": "Intermediate",
+    "type": "Coding",
+    "minutes": 10,
+    "prompt": "Calculate cumulative percentages by group. Study assumptions: sales(id,region,sold_on,amount); nonnegative numeric amounts; chronological order with ID tie-breaker.",
+    "answer": [
+      "Compute a running amount within each region and divide it by that region's complete amount. The numerator uses an explicit ROWS frame from the first row through the current row, while the denominator omits ordering so it covers the entire region. Multiplying by a decimal hundred produces a percentage. A unique identifier after the sale date makes the row-by-row progression deterministic when several sales share a date.",
+      "The source names cumulative percentages without specifying an ordering or business measure, so chronology and nonnegative sale amounts are study assumptions. A different order, such as largest product contribution first, answers a different question. With nonnegative amounts, percentages never decrease and the final positive-total row reaches one hundred. A region with total zero has an undefined percentage, represented by null. If all sales on a date should share one cumulative percentage, aggregate to the date grain before calculating the running amount."
+    ],
+    "code": "-- PostgreSQL; Study assumptions: id is unique; sold_on and amount are non-null.\nSELECT id, region, sold_on, amount,\n       100.0 * SUM(amount) OVER (\n         PARTITION BY region ORDER BY sold_on, id\n         ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW\n       ) / NULLIF(SUM(amount) OVER (PARTITION BY region), 0) AS cumulative_pct\nFROM sales\nORDER BY region, sold_on, id;",
+    "pitfalls": [
+      "Accidentally making the denominator cumulative by including ORDER BY.",
+      "Leaving same-date ordering ambiguous for a row-based cumulative result."
+    ],
+    "followups": [
+      "Study extension: calculate contribution ordered by product revenue.",
+      "Study extension: make all transactions on the same date share one cumulative share."
+    ],
+    "sourceUrl": "https://www.postgresql.org/docs/current/sql-expressions.html#SYNTAX-WINDOW-FUNCTIONS",
+    "language": "sql",
+    "provenance": {
+      "kind": "candidate-reported",
+      "scope": "reported-question",
+      "url": "https://www.linkedin.com/posts/isha90_sql-dataanalyst-businessanalyst-activity-7412490615801909250-8n_U",
+      "author": "Isha Rajput",
+      "title": "Self-reported SQL interview scenarios",
+      "role": null,
+      "company": null,
+      "experience": null,
+      "accessedAt": "2026-11-18",
+      "note": "Unverified self-reported interview experience. Question paraphrased; schema and detailed rules are study assumptions; answer independently written. Self-reported question list; employer and interview context not stated."
+    }
+  },
+  {
+    "id": "li-sql-a017",
+    "subject": "sql",
+    "topic": "Temporal reporting",
+    "subtopic": "Explicit-zone time bucketing",
+    "title": "Hourly event totals",
+    "difficulty": "Intermediate",
+    "type": "Coding",
+    "minutes": 8,
+    "prompt": "Aggregate timestamped events. Study assumptions: events(occurred_at timestamptz,amount); report hourly sums in UTC; omit hours without events.",
+    "answer": [
+      "Convert each timestamp to the chosen reporting timezone, truncate it to the start of its hour, and group on that bucket. Sum the numeric amount within each bucket and include an event count when it helps distinguish volume from value. The result labels each UTC hour explicitly, avoiding a hidden dependency on the connection's timezone setting.",
+      "The source asks about hourly or daily aggregation but leaves the schema and timezone unspecified. UTC hours and observed buckets are supplied study choices. For a local reporting calendar, choose a named timezone and decide how repeated daylight-saving hours should be represented; truncating local wall-clock timestamps can combine repeated hour labels. Null amounts do not contribute to SUM, while COUNT(*) still counts their event rows. A complete timeline with empty hours needs a generated calendar joined to these aggregates."
+    ],
+    "code": "-- PostgreSQL; Study assumptions: occurred_at timestamptz NOT NULL, amount numeric.\nSELECT DATE_TRUNC('hour', occurred_at AT TIME ZONE 'UTC') AS utc_hour,\n       COUNT(*) AS event_count, SUM(amount) AS total_amount\nFROM events\nGROUP BY DATE_TRUNC('hour', occurred_at AT TIME ZONE 'UTC')\nORDER BY utc_hour;",
+    "pitfalls": [
+      "Letting session timezone settings silently change reporting buckets.",
+      "Interpreting absent hours as zero without a complete calendar and data-coverage rule."
+    ],
+    "followups": [
+      "Study extension: report daily totals in a named business timezone.",
+      "Study extension: include verified empty hours using a generated calendar."
+    ],
+    "sourceUrl": "https://www.postgresql.org/docs/current/functions-datetime.html",
+    "language": "sql",
+    "provenance": {
+      "kind": "candidate-reported",
+      "scope": "reported-question",
+      "url": "https://www.linkedin.com/posts/isha90_sql-dataanalyst-businessanalyst-activity-7412490615801909250-8n_U",
+      "author": "Isha Rajput",
+      "title": "Self-reported SQL interview scenarios",
+      "role": null,
+      "company": null,
+      "experience": null,
+      "accessedAt": "2026-11-18",
+      "note": "Unverified self-reported interview experience. Question paraphrased; schema and detailed rules are study assumptions; answer independently written. Self-reported question list; employer and interview context not stated."
+    }
+  },
+  {
+    "id": "li-sql-a018",
+    "subject": "sql",
+    "topic": "Aggregation",
+    "subtopic": "Median from central ordered observations",
+    "title": "Department salary median",
+    "difficulty": "Intermediate",
+    "type": "Coding",
+    "minutes": 10,
+    "prompt": "Compute departmental medians. Study assumptions: employees(id,department_id,salary); ignore null salaries; average the middle pair for even populations.",
+    "answer": [
+      "Sort the known salaries within each department and number the rows. Also calculate the number of known salaries in that department. For an odd population, the two integer formulas for the central positions coincide; for an even population, they identify the two middle rows. Average those selected salaries to produce the conventional continuous median. Using numeric salary values preserves decimal results when the middle pair differs.",
+      "The median describes the center of the ordered employee observations, so repeated salaries retain their multiplicity. Removing duplicate salary values would calculate a different statistic. Departments with no known salary do not appear in this query because their input rows were excluded; join to a department dimension if an explicit null-median row is required. A stable identifier makes equal-salary row numbering reproducible, although it does not change the resulting median. PostgreSQL also offers percentile_cont for this purpose."
+    ],
+    "code": "-- PostgreSQL; Study assumptions: id is unique and salary is numeric.\nWITH ordered AS (\n  SELECT department_id, salary,\n         ROW_NUMBER() OVER (PARTITION BY department_id ORDER BY salary, id) AS rn,\n         COUNT(*) OVER (PARTITION BY department_id) AS n\n  FROM employees\n  WHERE salary IS NOT NULL\n)\nSELECT department_id, AVG(salary) AS median_salary\nFROM ordered\nWHERE rn IN ((n + 1) / 2, (n + 2) / 2)\nGROUP BY department_id\nORDER BY department_id;",
+    "pitfalls": [
+      "Deduplicating salary values before calculating the employee median.",
+      "Using an integer salary average that loses a fractional middle-pair result in another SQL dialect."
+    ],
+    "followups": [
+      "Study extension: compare the result with percentile_cont(0.5).",
+      "Study extension: include departments with no known salaries."
+    ],
+    "sourceUrl": "https://www.postgresql.org/docs/current/functions-aggregate.html",
+    "language": "sql",
+    "provenance": {
+      "kind": "candidate-reported",
+      "scope": "reported-question",
+      "author": "Rohit Honde",
+      "title": "Self-reported SQL interview question list",
+      "company": null,
+      "experience": null,
+      "role": null,
+      "accessedAt": "2026-11-18",
+      "note": "Unverified self-reported question list; employer and interview context not stated. Question paraphrased; schema and detailed rules are study assumptions; answer independently written.",
+      "url": "https://www.linkedin.com/posts/rohit-honde-50a100185_sql-dataengineering-interviewquestions-activity-7333851408275779584-6KQR"
+    }
+  },
+  {
+    "id": "li-sql-a019",
+    "subject": "sql",
+    "topic": "Window functions",
+    "subtopic": "Ranking with business-defined precedence",
+    "title": "Rank by custom priority",
+    "difficulty": "Intermediate",
+    "type": "Coding",
+    "minutes": 10,
+    "prompt": "Rank items within groups. Study assumptions: tickets(id,team,priority,created_at); urgent, normal, other; oldest first; unique row positions.",
+    "answer": [
+      "Translate the business priority labels into numeric sort keys with CASE, then rank rows inside each team using that key, creation time, and a unique identifier. ROW_NUMBER supplies exactly one distinct position per ticket. The numeric CASE values express precedence only; they are not scores to be added to age or ticket identifiers. Explicit secondary keys make the result reproducible when priority labels match.",
+      "The reported question does not supply a priority vocabulary or tie rule, so the ticket model and label order are study assumptions. Unknown or null priorities are placed in the final category. Null creation times are ordered last within that category by the explicit ordering clause. If equal business values should share a rank, use RANK or DENSE_RANK and leave the unique identifier out of that ranking expression. A separate final ORDER BY can still make display order deterministic."
+    ],
+    "code": "-- PostgreSQL; Study assumptions: tickets(id bigint PRIMARY KEY, team text,\n-- priority text, created_at timestamptz).\nSELECT id, team, priority, created_at,\n       ROW_NUMBER() OVER (\n         PARTITION BY team\n         ORDER BY CASE priority WHEN 'urgent' THEN 1 WHEN 'normal' THEN 2 ELSE 3 END,\n                  created_at ASC NULLS LAST, id\n       ) AS team_position\nFROM tickets\nORDER BY team, team_position;",
+    "pitfalls": [
+      "Relying on alphabetic priority order instead of the defined business precedence.",
+      "Using a unique identifier inside a tie-preserving rank when ties should share a rank."
+    ],
+    "followups": [
+      "Study extension: preserve ties for identical priority and creation time.",
+      "Study extension: store priority precedence in a governed reference table."
+    ],
+    "sourceUrl": "https://www.postgresql.org/docs/current/queries-order.html",
+    "language": "sql",
+    "provenance": {
+      "kind": "candidate-reported",
+      "scope": "reported-question",
+      "author": "Rohit Honde",
+      "title": "Self-reported SQL interview question list",
+      "company": null,
+      "experience": null,
+      "role": null,
+      "accessedAt": "2026-11-18",
+      "note": "Unverified self-reported question list; employer and interview context not stated. Question paraphrased; schema and detailed rules are study assumptions; answer independently written.",
+      "url": "https://www.linkedin.com/posts/rohit-honde-50a100185_sql-dataengineering-interviewquestions-activity-7333851408275779584-6KQR"
+    }
+  },
+  {
+    "id": "li-sql-a020",
+    "subject": "sql",
+    "topic": "Date processing",
+    "subtopic": "Explicit string parsing versus display formatting",
+    "title": "Parse string dates",
+    "difficulty": "Intermediate",
+    "type": "Coding",
+    "minutes": 8,
+    "prompt": "Convert text into dates. Study assumptions: imported(id,date_text); valid DD/MM/YYYY strings; retain a date-typed result.",
+    "answer": [
+      "Use TO_DATE with an explicit input template so a value such as 03/04/2026 is interpreted according to the stated day-month order. The result is a PostgreSQL date value, which supports chronological comparisons and date arithmetic. Formatting a value into a different-looking string is a separate operation; TO_CHAR returns text and should not replace the parsed date in a typed analytical model.",
+      "This study version promises valid strings in one format. TO_DATE is not a general-purpose safe parser for arbitrary malformed data: invalid values can raise errors, and format-template behavior needs to be understood. Validate and quarantine untrusted imports before casting them into the typed table. Do not guess whether an ambiguous input is day-first or month-first. Null input remains null, and timestamp inputs need a different contract if their time or timezone information must be preserved."
+    ],
+    "code": "-- PostgreSQL; Study assumptions: date_text contains valid DD/MM/YYYY or NULL.\nSELECT id, TO_DATE(date_text, 'FXDD/MM/YYYY') AS parsed_date\nFROM imported\nORDER BY id;\n\n-- Optional display formatting returns text, not another date type:\nSELECT TO_CHAR(DATE '2026-04-03', 'YYYY-MM-DD') AS display_date;",
+    "pitfalls": [
+      "Using TO_CHAR when the required output must be date-typed.",
+      "Guessing the meaning of ambiguous dates or treating TO_DATE as error-tolerant validation."
+    ],
+    "followups": [
+      "Study extension: quarantine malformed records before loading a typed date column.",
+      "Study extension: parse timestamp strings while preserving their timezone semantics."
+    ],
+    "sourceUrl": "https://www.postgresql.org/docs/current/functions-formatting.html",
+    "language": "sql",
+    "provenance": {
+      "kind": "candidate-reported",
+      "scope": "reported-question",
+      "author": "Rohit Honde",
+      "title": "Self-reported SQL interview question list",
+      "company": null,
+      "experience": null,
+      "role": null,
+      "accessedAt": "2026-11-18",
+      "note": "Unverified self-reported question list; employer and interview context not stated. Question paraphrased; schema and detailed rules are study assumptions; answer independently written.",
+      "url": "https://www.linkedin.com/posts/rohit-honde-50a100185_sql-dataengineering-interviewquestions-activity-7318826875798056960-9V_c"
+    }
+  },
+  {
+    "id": "li-sql-a021",
+    "subject": "sql",
+    "topic": "Window functions",
+    "subtopic": "Session boundaries from inactivity gaps",
+    "title": "Sessionize event activity",
+    "difficulty": "Advanced",
+    "type": "Coding",
+    "minutes": 12,
+    "prompt": "Group events into sessions. Study assumptions: events(id,user_id,event_time timestamptz); unique IDs, non-null times; a gap exceeding 30 minutes starts a session.",
+    "answer": [
+      "Sort each user's events by event time and a unique identifier. LAG supplies the preceding event time, allowing the first event and every gap greater than thirty minutes to be marked as a new session. A cumulative sum of those markers assigns a session number. Finally group by user and session number to report the earliest event, latest event, and event count.",
+      "The threshold is strictly greater than thirty minutes, so a gap of exactly thirty minutes remains in the same session. Session length can exceed thirty minutes when each neighboring gap stays within the threshold. Timestamp ordering, rather than ingestion order, handles events that arrived out of sequence in a batch. A late event can merge or renumber historical sessions, so a streaming implementation needs an explicit lateness policy. The study query counts duplicate event records separately unless they have already been reconciled by event identifier."
+    ],
+    "code": "-- PostgreSQL; Study assumptions: events.id is unique; event_time is timestamptz NOT NULL.\nWITH previous AS (\n  SELECT id, user_id, event_time,\n         LAG(event_time) OVER (PARTITION BY user_id ORDER BY event_time, id) AS prior_time\n  FROM events\n), numbered AS (\n  SELECT *, SUM(CASE WHEN prior_time IS NULL\n                          OR event_time - prior_time > INTERVAL '30 minutes'\n                     THEN 1 ELSE 0 END) OVER (\n         PARTITION BY user_id ORDER BY event_time, id\n         ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW\n       ) AS session_number\n  FROM previous\n)\nSELECT user_id, session_number, MIN(event_time) AS session_start,\n       MAX(event_time) AS session_end, COUNT(*) AS event_count\nFROM numbered\nGROUP BY user_id, session_number\nORDER BY user_id, session_start;",
+    "pitfalls": [
+      "Starting a new session at exactly thirty minutes when the rule says exceeding thirty minutes.",
+      "Grouping by elapsed time from session start instead of gaps between consecutive events."
+    ],
+    "followups": [
+      "Study extension: define how late events revise historical sessions.",
+      "Study extension: compute session duration and median events per session."
+    ],
+    "sourceUrl": "https://www.postgresql.org/docs/current/sql-expressions.html#SYNTAX-WINDOW-FUNCTIONS",
+    "language": "sql",
+    "provenance": {
+      "kind": "candidate-reported",
+      "company": null,
+      "experience": null,
+      "accessedAt": "2026-11-18",
+      "note": "Unverified self-reported interview experience. Question paraphrased; schema and detailed rules are study assumptions; answer independently written.",
+      "scope": "reported-question",
+      "url": "https://www.linkedin.com/posts/prajaktamunje20_interviewquestions-sql-dataengineering-activity-7470652092437725185-7xsY",
+      "author": "Prajakta Munje",
+      "title": "Two SQL questions from a Data Lake Consultant interview",
+      "role": "Data Lake Consultant"
+    }
+  },
+  {
+    "id": "li-sql-a022",
+    "subject": "sql",
+    "topic": "Retention analytics",
+    "subtopic": "Rolling activity windows for signup cohorts and monthly change",
+    "title": "Rolling cohort retention",
+    "difficulty": "Advanced",
+    "type": "Coding",
+    "minutes": 12,
+    "prompt": "Measure cohort retention and monthly change. Study assumptions: users(id,signup_on), activity(user_id,day); signup-month cohorts; month-end 30-day return activity; complete data July–October 2026.",
+    "answer": [
+      "The reported question leaves rolling retention and cohort membership undefined, so first state the study metric precisely. A cohort is a signup calendar month. At each reporting month end, eligible users signed up before that reporting month and count as retained if they have any activity during the ending thirty calendar days. Count distinct users in the numerator and denominator, calculate the percentage, and compare successive month-end percentages within the same cohort.",
+      "This is an activity-within-window retention metric, not an exact day-thirty return rate or a count of uninterrupted daily visits. The thirty-day window includes its end date and the preceding twenty-nine dates. Excluding the current signup month avoids treating acquisition activity as mature-cohort retention. Repeated events cannot inflate the numerator because users are counted distinctly. The supplied months have complete observation coverage; an incomplete final month should not be silently compared with a completed month. The change is expressed in percentage points."
+    ],
+    "code": "-- PostgreSQL; Study assumptions: signup_on and day are dates; users.id is unique.\n-- Complete activity observation through 2026-10-31; reporting months July through October.\nWITH points AS (\n  SELECT m::date AS month_start,\n         (m + INTERVAL '1 month' - INTERVAL '1 day')::date AS as_of\n  FROM GENERATE_SERIES(TIMESTAMP '2026-07-01', TIMESTAMP '2026-10-01',\n                       INTERVAL '1 month') AS g(m)\n), rates AS (\n  SELECT DATE_TRUNC('month', u.signup_on)::date AS cohort_month, p.as_of,\n         COUNT(DISTINCT u.id) AS cohort_size,\n         COUNT(DISTINCT a.user_id) AS retained_users,\n         100.0 * COUNT(DISTINCT a.user_id) / NULLIF(COUNT(DISTINCT u.id), 0) AS retention_pct\n  FROM points p\n  JOIN users u ON u.signup_on < p.month_start\n  LEFT JOIN activity a ON a.user_id = u.id\n                      AND a.day BETWEEN p.as_of - 29 AND p.as_of\n                      AND a.day > u.signup_on\n  GROUP BY DATE_TRUNC('month', u.signup_on)::date, p.as_of\n)\nSELECT *, retention_pct - LAG(retention_pct) OVER (\n         PARTITION BY cohort_month ORDER BY as_of\n       ) AS change_percentage_points\nFROM rates\nORDER BY cohort_month, as_of;",
+    "pitfalls": [
+      "Counting activity events instead of distinct retained users.",
+      "Calling an arbitrary rolling activity metric exact day-thirty retention."
+    ],
+    "followups": [
+      "Study extension: implement an exact day-thirty return metric and compare its meaning.",
+      "Study extension: show cohort maturity and data-coverage limits explicitly."
+    ],
+    "sourceUrl": "https://www.postgresql.org/docs/current/functions-srf.html",
+    "language": "sql",
+    "provenance": {
+      "kind": "candidate-reported",
+      "company": null,
+      "experience": null,
+      "accessedAt": "2026-11-18",
+      "note": "Unverified self-reported interview experience. Question paraphrased; schema and detailed rules are study assumptions; answer independently written.",
+      "scope": "reported-question",
+      "url": "https://www.linkedin.com/posts/aman-chauhan71_30-sql-for-data-science-interview-questions-activity-7481996876800610304-_YyK",
+      "author": "Aman Chauhan",
+      "title": "Cohort-retention question from a data science interview",
+      "role": "Data Science"
+    }
+  },
+  {
+    "id": "li-sql-a023",
+    "subject": "sql",
+    "topic": "Temporal reporting",
+    "subtopic": "Calendar-complete moving averages",
+    "title": "Moving average with date gaps",
+    "difficulty": "Advanced",
+    "type": "Coding",
+    "minutes": 12,
+    "prompt": "Compute a calendar moving average. Study assumptions: sales(sold_on,amount); fully observed days, missing rows mean zero; seven-day trailing average for October 2026.",
+    "answer": [
+      "The reported topic emphasizes moving averages with missing dates and partial data. For this study version, first aggregate sales by day and join them to a complete daily calendar. A missing sales row becomes zero only because observation is declared complete. Calculate the average over the current date and six preceding calendar rows. Include six warm-up dates before the requested month, then filter the final output to October.",
+      "Without the calendar, a seven-row frame could span many more than seven days. Filtering away the warm-up rows before applying the window would also shrink the first October windows. The result averages daily totals, rather than individual transaction amounts, so busy days do not receive extra weight. An ingestion outage is unknown data, not zero revenue; if coverage is incomplete, carry a completeness flag and suppress or label affected averages. Test an empty sales day, several transactions on one day, and the month's first output date."
+    ],
+    "code": "-- PostgreSQL; Study assumptions: sold_on is date; amount is numeric NOT NULL.\nWITH calendar AS (\n  SELECT d::date AS day\n  FROM GENERATE_SERIES(TIMESTAMP '2026-09-25', TIMESTAMP '2026-10-31',\n                       INTERVAL '1 day') AS g(d)\n), daily AS (\n  SELECT sold_on, SUM(amount) AS revenue\n  FROM sales\n  WHERE sold_on >= DATE '2026-09-25' AND sold_on < DATE '2026-11-01'\n  GROUP BY sold_on\n), moving AS (\n  SELECT c.day, COALESCE(d.revenue, 0) AS revenue,\n         AVG(COALESCE(d.revenue, 0)) OVER (\n           ORDER BY c.day ROWS BETWEEN 6 PRECEDING AND CURRENT ROW\n         ) AS average_7_days\n  FROM calendar c LEFT JOIN daily d ON d.sold_on = c.day\n)\nSELECT * FROM moving\nWHERE day >= DATE '2026-10-01'\nORDER BY day;",
+    "pitfalls": [
+      "Using seven observed sale rows as if they represented seven calendar days.",
+      "Zero-filling unknown data or removing warm-up dates before the window calculation."
+    ],
+    "followups": [
+      "Study extension: suppress windows containing incompletely observed days.",
+      "Study extension: compare daily-average revenue with average transaction value."
+    ],
+    "sourceUrl": "https://www.postgresql.org/docs/current/functions-window.html",
+    "language": "sql",
+    "provenance": {
+      "kind": "candidate-reported",
+      "company": null,
+      "experience": null,
+      "accessedAt": "2026-11-18",
+      "note": "Unverified self-reported interview experience. Question paraphrased; schema and detailed rules are study assumptions; answer independently written. Source reports interview patterns rather than complete question statements; the concrete exercise is a study interpretation.",
+      "scope": "reported-topic",
+      "url": "https://www.linkedin.com/posts/aparna-shukla-6985a4192_sql-dataanalytics-dataanalyst-activity-7453671047540785152-aGpm",
+      "author": "Aparna Shukla",
+      "title": "SQL patterns encountered across interviews",
+      "role": "Product, fintech, and analytics roles; exact positions not stated"
+    }
+  },
+  {
+    "id": "li-sql-a024",
+    "subject": "sql",
+    "topic": "Business metrics",
+    "subtopic": "Several conditional measures in one aggregation",
+    "title": "Multiple order KPIs",
+    "difficulty": "Intermediate",
+    "type": "Coding",
+    "minutes": 10,
+    "prompt": "Summarize multiple KPIs together. Study assumptions: orders(id,region,status,amount); unique orders; non-null amount; count completed/canceled orders and completed revenue per region.",
+    "answer": [
+      "The reported pattern is conditional aggregation for several business measures from one table. Group orders by region once, and give each measure its own CASE condition. Summing one or zero counts orders with a chosen status, while summing amount or zero produces completed-order revenue. COUNT(*) supplies the total order population, allowing the reader to reconcile the status-specific counts against all stored orders.",
+      "The input grain must be one row per order. Joining order items first would change these counts into line counts unless the data were reaggregated. Unknown statuses still contribute to total orders but not to the completed or canceled measures. The non-null amount assumption avoids silently ignoring an unknown amount in completed revenue. The business must also decide whether refunded completed orders, taxes, and discounts affect the revenue measure. Keeping these definitions explicit matters more than adding extra KPIs."
+    ],
+    "code": "-- PostgreSQL; Study assumptions: one row per id; amount numeric NOT NULL.\nSELECT region, COUNT(*) AS total_orders,\n       SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) AS completed_orders,\n       SUM(CASE WHEN status = 'canceled' THEN 1 ELSE 0 END) AS canceled_orders,\n       SUM(CASE WHEN status = 'completed' THEN amount ELSE 0 END) AS completed_revenue\nFROM orders\nGROUP BY region\nORDER BY region;",
+    "pitfalls": [
+      "Letting one-to-many joins change order counts into child-row counts.",
+      "Assuming a status list is exhaustive when unknown statuses exist."
+    ],
+    "followups": [
+      "Study extension: calculate completion rate with a defined denominator.",
+      "Study extension: reconcile revenue after refunds and discounts."
+    ],
+    "sourceUrl": "https://www.postgresql.org/docs/current/functions-conditional.html",
+    "language": "sql",
+    "provenance": {
+      "kind": "candidate-reported",
+      "company": null,
+      "experience": null,
+      "accessedAt": "2026-11-18",
+      "note": "Unverified self-reported interview experience. Question paraphrased; schema and detailed rules are study assumptions; answer independently written. Source reports interview patterns rather than complete question statements; the concrete exercise is a study interpretation.",
+      "scope": "reported-topic",
+      "url": "https://www.linkedin.com/posts/aparna-shukla-6985a4192_sql-dataanalytics-dataanalyst-activity-7453671047540785152-aGpm",
+      "author": "Aparna Shukla",
+      "title": "SQL patterns encountered across interviews",
+      "role": "Product, fintech, and analytics roles; exact positions not stated"
+    }
+  },
+  {
+    "id": "li-sql-a025",
+    "subject": "sql",
+    "topic": "Funnel analytics",
+    "subtopic": "Ordered event subsequences and distinct-user counts",
+    "title": "Ordered conversion funnel",
+    "difficulty": "Advanced",
+    "type": "Coding",
+    "minutes": 12,
+    "prompt": "Count ordered funnel users. Study assumptions: events(user_id,event_time,event_type); view then checkout then purchase at strictly increasing times; all observed history; one count per user.",
+    "answer": [
+      "The reported topic is funnel analysis with events arriving out of order. This study funnel is based on event timestamps, independent of insertion order. Find each user's earliest view, then their earliest checkout strictly after that view, then their earliest purchase strictly after that checkout. Count users reaching each stage. Selecting the earliest eligible event at every step leaves the widest possible remaining interval for later steps.",
+      "An unordered count of users having each event type would include users whose purchase happened before their checkout or view. Repeated events must not inflate user counts, so each intermediate result has one row per user. The exercise allows the sequence anywhere in the observed history; a same-session or twenty-four-hour conversion window would require additional constraints. Equal timestamps do not qualify under the stated strict ordering. Late arrivals can change past results when their timestamps complete or alter an eligible sequence."
+    ],
+    "code": "-- PostgreSQL; Study assumptions: event_time is non-null timestamptz.\nWITH views AS (\n  SELECT user_id, MIN(event_time) AS viewed_at\n  FROM events WHERE event_type = 'view'\n  GROUP BY user_id\n), checkouts AS (\n  SELECT v.user_id, v.viewed_at, MIN(e.event_time) AS checked_out_at\n  FROM views v\n  LEFT JOIN events e ON e.user_id = v.user_id AND e.event_type = 'checkout'\n                    AND e.event_time > v.viewed_at\n  GROUP BY v.user_id, v.viewed_at\n), purchases AS (\n  SELECT c.user_id, c.checked_out_at, MIN(e.event_time) AS purchased_at\n  FROM checkouts c\n  LEFT JOIN events e ON e.user_id = c.user_id AND e.event_type = 'purchase'\n                    AND e.event_time > c.checked_out_at\n  GROUP BY c.user_id, c.checked_out_at\n)\nSELECT COUNT(*) AS viewed_users, COUNT(checked_out_at) AS checkout_users,\n       COUNT(purchased_at) AS purchased_users\nFROM purchases;",
+    "pitfalls": [
+      "Counting event-type membership without enforcing chronological order.",
+      "Combining unrelated sessions when the requirement actually specifies a session-level funnel."
+    ],
+    "followups": [
+      "Study extension: require the funnel to complete within twenty-four hours.",
+      "Study extension: explain how late events revise historical conversion rates."
+    ],
+    "sourceUrl": "https://www.postgresql.org/docs/current/queries-table-expressions.html",
+    "language": "sql",
+    "provenance": {
+      "kind": "candidate-reported",
+      "company": null,
+      "experience": null,
+      "accessedAt": "2026-11-18",
+      "note": "Unverified self-reported interview experience. Question paraphrased; schema and detailed rules are study assumptions; answer independently written. Source reports interview patterns rather than complete question statements; the concrete exercise is a study interpretation.",
+      "scope": "reported-topic",
+      "url": "https://www.linkedin.com/posts/aparna-shukla-6985a4192_sql-dataanalytics-dataanalyst-activity-7453671047540785152-aGpm",
+      "author": "Aparna Shukla",
+      "title": "SQL patterns encountered across interviews",
+      "role": "Product, fintech, and analytics roles; exact positions not stated"
+    }
+  },
+  {
+    "id": "li-sql-a026",
+    "subject": "sql",
+    "topic": "Business rules",
+    "subtopic": "Reference-table conditions instead of hardcoded thresholds",
+    "title": "Configurable regional rules",
+    "difficulty": "Intermediate",
+    "type": "Coding",
+    "minutes": 10,
+    "prompt": "Apply rules stored as data. Study assumptions: transactions(id,region,amount), rules(region,minimum_amount); one rule per region; qualify amounts at least the regional threshold.",
+    "answer": [
+      "The source reports business-driven conditions held in configuration tables. In this study exercise, join each transaction to its region's rule and compare its amount with the stored threshold. This keeps the query structure fixed while the business can vary thresholds through governed data. A unique rule per region is essential so a transaction cannot be multiplied by several matching configuration rows.",
+      "The study contract excludes transactions whose region has no configured rule. If missing configuration should be an error, a separate validation query should expose those regions before producing the report. Amounts and thresholds are non-null, and the boundary is inclusive. Rules that change over time need effective dates and a guarantee of no overlapping rule periods; otherwise historical results may change when today's configuration is edited. The source does not specify a schema, so these particular tables and threshold semantics remain study assumptions."
+    ],
+    "code": "-- PostgreSQL; Study assumptions: rules.region is unique; amount and minimum_amount\n-- are numeric NOT NULL. Missing regional rules exclude transactions.\nSELECT t.id, t.region, t.amount, r.minimum_amount\nFROM transactions t\nJOIN rules r ON r.region = t.region\nWHERE t.amount >= r.minimum_amount\nORDER BY t.id;",
+    "pitfalls": [
+      "Allowing duplicate or overlapping rules to multiply transactions.",
+      "Applying today's rule to historical events without an explicit policy."
+    ],
+    "followups": [
+      "Study extension: add effective dates and prevent overlapping rule periods.",
+      "Study extension: report transactions missing a required regional rule."
+    ],
+    "sourceUrl": "https://www.postgresql.org/docs/current/queries-table-expressions.html",
+    "language": "sql",
+    "provenance": {
+      "kind": "candidate-reported",
+      "company": null,
+      "experience": null,
+      "accessedAt": "2026-11-18",
+      "note": "Unverified self-reported interview experience. Question paraphrased; schema and detailed rules are study assumptions; answer independently written. Source reports interview patterns rather than complete question statements; the concrete exercise is a study interpretation.",
+      "scope": "reported-topic",
+      "url": "https://www.linkedin.com/posts/aparna-shukla-6985a4192_sql-dataanalytics-dataanalyst-activity-7453671047540785152-aGpm",
+      "author": "Aparna Shukla",
+      "title": "SQL patterns encountered across interviews",
+      "role": "Product, fintech, and analytics roles; exact positions not stated"
+    }
+  }
+]

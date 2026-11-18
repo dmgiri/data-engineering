@@ -1,0 +1,560 @@
+[
+  {
+    "id": "li-sql-001",
+    "subject": "sql",
+    "topic": "Window functions",
+    "subtopic": "Consecutive values with LAG and LEAD",
+    "title": "Consecutive values",
+    "difficulty": "Intermediate",
+    "type": "Coding",
+    "minutes": 10,
+    "prompt": "Detect consecutive values. Study assumptions: events(seq,value); find values repeated across three adjacent rows.",
+    "answer": [
+      "The candidate reported a consecutive-number exercise involving LAG and LEAD, without publishing its full input or required output. Under the study assumptions, compare each value with the previous and next value in sequence order. A matching middle row proves that a run contains at least three occurrences. Select distinct values afterward so that a longer run, or several qualifying runs of the same value, produces one result. This interpretation concerns adjacent rows rather than arithmetic sequences such as 4, 5, 6.",
+      "Make seq unique and non-null so adjacency is deterministic. Gaps in seq do not break a run under this definition: the neighboring row is what matters. Ordinary equality deliberately excludes null values; change the comparison only if null should count as a repeated value. Validate the logic with a two-row run, exactly three occurrences, a longer run, and repeated values separated by another value. For a stream or session-specific dataset, partition the windows by the relevant entity before comparing neighbors."
+    ],
+    "code": "-- PostgreSQL; study schema: events(seq bigint PRIMARY KEY, value integer)\nWITH neighbors AS (\n  SELECT value,\n         LAG(value) OVER (ORDER BY seq) AS previous_value,\n         LEAD(value) OVER (ORDER BY seq) AS next_value\n  FROM events\n)\nSELECT DISTINCT value\nFROM neighbors\nWHERE value = previous_value AND value = next_value;",
+    "language": "sql",
+    "pitfalls": ["Confusing adjacent equal values with numerically consecutive values.", "Leaving the window ordering ambiguous when sequence keys tie."],
+    "followups": ["Study extension: return run boundaries and lengths.", "Study extension: require consecutive sequence identifiers as well as adjacent rows."],
+    "sourceUrl": "https://www.postgresql.org/docs/current/functions-window.html",
+    "provenance": {
+      "kind": "candidate-reported",
+      "scope": "reported-topic",
+      "url": "https://www.linkedin.com/posts/poorvasha97_azuredataengineer-dataengineering-azure-activity-7498308041554075648-cfGF",
+      "author": "POORVASHA .",
+      "title": "Tredence interview",
+      "company": "Tredence Inc.",
+      "experience": "6 years",
+      "accessedAt": "2026-11-18",
+      "note": "Self-reported interview experience; not independently verified. Question paraphrased; answer independently written."
+    }
+  },
+  {
+    "id": "li-sql-002",
+    "subject": "sql",
+    "topic": "Joins",
+    "subtopic": "Self-join for unordered combinations",
+    "title": "Team pairings",
+    "difficulty": "Intermediate",
+    "type": "Coding",
+    "minutes": 8,
+    "prompt": "Generate team matchups. Study assumptions: teams(id,name); each unordered pair appears once.",
+    "answer": [
+      "The source reports team combinations and match scheduling but does not provide a complete scheduling specification. For this study version, join the team table to itself and retain rows where the first team's identifier is smaller than the second team's identifier. The strict comparison removes self-matches and chooses one orientation for every pair. Three teams therefore produce three matchups, while n teams produce n multiplied by n minus one, divided by two. This count is a useful independent check on the output.",
+      "Use stable unique identifiers rather than names, because different teams can share a name and naming conventions can change. The result is a matchup list; it does not assign match dates or prevent a team from playing twice on the same day. Those constraints require an additional scheduling algorithm. If both home and away fixtures are required, the predicate changes to unequal identifiers and the expected number of rows doubles. Consider the quadratic output size before generating combinations for a very large entity table."
+    ],
+    "code": "-- PostgreSQL; study schema: teams(id integer PRIMARY KEY, name text)\nSELECT a.id AS team_a_id, a.name AS team_a,\n       b.id AS team_b_id, b.name AS team_b\nFROM teams AS a\nJOIN teams AS b ON a.id < b.id\nORDER BY a.id, b.id;",
+    "language": "sql",
+    "pitfalls": ["Using a.id <> b.id and unintentionally returning both orientations.", "Treating a list of pairings as a conflict-free dated schedule."],
+    "followups": ["Study extension: produce home and away fixtures.", "Study extension: assign round-robin rounds and handle an odd team count."],
+    "sourceUrl": "https://www.postgresql.org/docs/current/queries-table-expressions.html",
+    "provenance": {
+      "kind": "candidate-reported",
+      "scope": "reported-topic",
+      "url": "https://www.linkedin.com/posts/poorvasha97_azuredataengineer-dataengineering-azure-activity-7498308041554075648-cfGF",
+      "author": "POORVASHA .",
+      "title": "Tredence interview",
+      "company": "Tredence Inc.",
+      "experience": "6 years",
+      "accessedAt": "2026-11-18",
+      "note": "Self-reported interview experience; not independently verified. Question paraphrased; answer independently written."
+    }
+  },
+  {
+    "id": "li-sql-003",
+    "subject": "sql",
+    "topic": "Window functions",
+    "subtopic": "Gaps and islands in annual participation",
+    "title": "Consecutive participation years",
+    "difficulty": "Advanced",
+    "type": "Coding",
+    "minutes": 12,
+    "prompt": "Find consecutive-year participants. Study assumptions: participation(person_id,year); require three distinct consecutive years.",
+    "answer": [
+      "The candidate named consecutive-year participation as an interview topic; the three-year threshold and table are supplied study assumptions. First deduplicate person and year so repeated registrations cannot lengthen a streak. Within each person, sort the years and subtract the sequential row number from the year. The difference remains constant while years advance one at a time, making it a group identifier for each uninterrupted streak. Group by person and that identifier, then retain groups containing at least three years.",
+      "For example, the study years 2019, 2020, and 2022 produce two islands because the third year has a different year-minus-position value. Deduplication is essential to that invariant. Exclude unknown years rather than assigning them a position in a streak. A person can have several qualifying streaks, so select distinct person identifiers if the required output is participants rather than streak ranges. Sorting generally dominates the work; an index on person and year may help, but the execution plan determines whether the database can exploit it."
+    ],
+    "code": "-- PostgreSQL; study schema: participation(person_id bigint, year integer)\nWITH years AS (\n  SELECT DISTINCT person_id, year\n  FROM participation\n  WHERE person_id IS NOT NULL AND year IS NOT NULL\n), islands AS (\n  SELECT person_id, year,\n         year - ROW_NUMBER() OVER (PARTITION BY person_id ORDER BY year) AS island\n  FROM years\n), qualifying AS (\n  SELECT person_id, island\n  FROM islands\n  GROUP BY person_id, island\n  HAVING COUNT(*) >= 3\n)\nSELECT DISTINCT person_id FROM qualifying;",
+    "language": "sql",
+    "pitfalls": ["Allowing duplicate person-year rows to distort streak grouping.", "Counting three participation records without checking the years are consecutive."],
+    "followups": ["Study extension: return each streak's start, end, and duration.", "Study extension: replace calendar years with consecutive business periods."],
+    "sourceUrl": "https://www.postgresql.org/docs/current/tutorial-window.html",
+    "provenance": {
+      "kind": "candidate-reported",
+      "scope": "reported-topic",
+      "url": "https://www.linkedin.com/posts/poorvasha97_azuredataengineer-dataengineering-azure-activity-7498308041554075648-cfGF",
+      "author": "POORVASHA .",
+      "title": "Tredence interview",
+      "company": "Tredence Inc.",
+      "experience": "6 years",
+      "accessedAt": "2026-11-18",
+      "note": "Self-reported interview experience; not independently verified. Question paraphrased; answer independently written."
+    }
+  },
+  {
+    "id": "li-sql-004",
+    "subject": "sql",
+    "topic": "Aggregation",
+    "subtopic": "Scalar average and row filtering",
+    "title": "Above-average pay",
+    "difficulty": "Intermediate",
+    "type": "Coding",
+    "minutes": 8,
+    "prompt": "Find above-average earners. Study assumptions: employees(id,salary); use the company-wide average.",
+    "answer": [
+      "Compute the average salary in a scalar subquery and compare every employee's salary with that result. This keeps employee-level rows available while the inner query produces a single comparison value. Under the study assumptions, the comparison is company-wide rather than departmental, and it is strictly greater than the average. Equal salaries do not qualify. PostgreSQL AVG ignores null salary inputs; a null employee salary also fails the outer comparison because the comparison does not evaluate to true.",
+      "If the table is empty or every salary is null, the average is null and the query returns no qualifying employees. Do not silently replace missing salaries with zero, because that changes the business meaning of average pay. A department-level interpretation would require correlating the inner query by department or computing a partitioned average. Before discussing performance, establish the intended population: including inactive employees in the average while filtering them from output can change which active employees qualify. Apply population filters consistently with the requirement."
+    ],
+    "code": "-- PostgreSQL; study schema: employees(id bigint PRIMARY KEY, salary numeric)\nSELECT id, salary\nFROM employees\nWHERE salary > (SELECT AVG(salary) FROM employees)\nORDER BY id;",
+    "language": "sql",
+    "pitfalls": ["Using a department average when the requirement is company-wide, or vice versa.", "Replacing missing salary values with zero without a business rule."],
+    "followups": ["Study extension: compare each employee with their department average.", "Study extension: explain how filtering the average population changes the result."],
+    "sourceUrl": "https://www.postgresql.org/docs/current/functions-aggregate.html",
+    "provenance": {
+      "kind": "candidate-reported",
+      "scope": "reported-question",
+      "url": "https://www.linkedin.com/posts/arvindkumar007_dataengineering-accenture-interviewexperience-activity-7415218275225198592-92B6",
+      "author": "Arvind Saharan",
+      "title": "Accenture interview",
+      "company": "Accenture",
+      "experience": null,
+      "accessedAt": "2026-11-18",
+      "note": "Self-reported interview experience; not independently verified. Question paraphrased; answer independently written."
+    }
+  },
+  {
+    "id": "li-sql-005",
+    "subject": "sql",
+    "topic": "Window functions",
+    "subtopic": "Top-N row selection and ties",
+    "title": "Top N records",
+    "difficulty": "Intermediate",
+    "type": "Coding",
+    "minutes": 10,
+    "prompt": "Select top N using windows. Study assumptions: employees(id,salary); N=3, exactly three rows when available.",
+    "answer": [
+      "Define what top N means before choosing a ranking function. The study version requests at most three employee rows, so use ROW_NUMBER with descending salary and a unique identifier as a final tie-breaker. Rank the rows in an inner query, then filter the generated position in an outer query. Explicitly place null salaries last in PostgreSQL so an unknown salary cannot outrank a known one. The identifier resolves equal salaries deterministically without changing which salary is considered higher.",
+      "If the intended requirement is instead the three highest distinct salary levels, use DENSE_RANK over salary alone and keep ranks up to three. That can return more than three employees. RANK also preserves ties but leaves gaps, making its cutoff mean positions in the ordered population rather than a count of distinct levels. These are different contracts, not interchangeable optimizations. Discuss whether null salaries belong in the population at all, and add PARTITION BY only if the interviewer requests top N within each group."
+    ],
+    "code": "-- PostgreSQL; study schema: employees(id bigint PRIMARY KEY, salary numeric)\nWITH ranked AS (\n  SELECT id, salary,\n         ROW_NUMBER() OVER (ORDER BY salary DESC NULLS LAST, id) AS position\n  FROM employees\n)\nSELECT id, salary\nFROM ranked\nWHERE position <= 3\nORDER BY position;",
+    "language": "sql",
+    "pitfalls": ["Failing to define whether ties may increase the row count.", "Including an identifier in DENSE_RANK when equal salaries should share a rank."],
+    "followups": ["Study extension: return the top three distinct salary levels including ties.", "Study extension: return top N per department."],
+    "sourceUrl": "https://www.postgresql.org/docs/current/tutorial-window.html",
+    "provenance": {
+      "kind": "candidate-reported",
+      "scope": "reported-question",
+      "url": "https://www.linkedin.com/posts/arvindkumar007_dataengineering-accenture-interviewexperience-activity-7415218275225198592-92B6",
+      "author": "Arvind Saharan",
+      "title": "Accenture interview",
+      "company": "Accenture",
+      "experience": null,
+      "accessedAt": "2026-11-18",
+      "note": "Self-reported interview experience; not independently verified. Question paraphrased; answer independently written."
+    }
+  },
+  {
+    "id": "li-sql-006",
+    "subject": "sql",
+    "topic": "String processing",
+    "subtopic": "Fixed-position substring extraction",
+    "title": "Fixed-position digits",
+    "difficulty": "Intermediate",
+    "type": "Coding",
+    "minutes": 8,
+    "prompt": "Extract an identifier's numeric section. Study assumptions: exactly three letters, four digits, then six letters.",
+    "answer": [
+      "With a guaranteed fixed layout, the four-digit section begins at character position four. PostgreSQL SUBSTRING uses one-based positions, so extract four characters starting there. Keep the result as text when the numeric section is an identifier: converting 0042 into an integer would discard its leading zeros. The simple positional solution is appropriate only when the layout is a trusted input contract. The example query additionally validates the assumed ASCII layout and returns null for malformed values.",
+      "Validation and extraction answer different questions. SUBSTRING alone can return apparently plausible digits from a malformed identifier, such as one with an extra prefix character. If invalid rows need rejection or investigation, expose a separate validation status instead of hiding them. Clarify whether the surrounding characters must be ASCII letters, because a broader international naming policy requires a different pattern. Test leading zeros, too-short identifiers, misplaced letters, and null values. The original post described this fixed-layout task separately from its variable-layout follow-up."
+    ],
+    "code": "-- PostgreSQL; study schema: identifiers(id text)\nSELECT id,\n       CASE WHEN id ~ '^[A-Za-z]{3}[0-9]{4}[A-Za-z]{6}$'\n            THEN SUBSTRING(id FROM 4 FOR 4)\n       END AS numeric_section\nFROM identifiers;",
+    "language": "sql",
+    "pitfalls": ["Using zero-based offsets in a one-based SQL substring function.", "Casting identifier digits to an integer and losing leading zeros."],
+    "followups": ["Study extension: emit a validation reason for malformed identifiers.", "Study extension: compare extraction by position with extraction by pattern."],
+    "sourceUrl": "https://www.postgresql.org/docs/current/functions-string.html",
+    "provenance": {
+      "kind": "candidate-reported",
+      "scope": "reported-question",
+      "url": "https://www.linkedin.com/posts/gireeshgalande_bigdata-dataengineer-interview-activity-7333175778550898690-M6LJ",
+      "author": "Gireesh Galande",
+      "title": "MAN interview",
+      "company": "MAN Truck & Bus SE",
+      "experience": "2+ years",
+      "accessedAt": "2026-11-18",
+      "note": "Self-reported interview experience; not independently verified. Question paraphrased; answer independently written."
+    }
+  },
+  {
+    "id": "li-sql-007",
+    "subject": "sql",
+    "topic": "String processing",
+    "subtopic": "Regular-expression digit extraction",
+    "title": "Variable-position digits",
+    "difficulty": "Intermediate",
+    "type": "Coding",
+    "minutes": 8,
+    "prompt": "Extract digits without fixed offsets. Study assumptions: return the first contiguous ASCII digit run, or null.",
+    "answer": [
+      "A variable prefix makes a positional slice unreliable, so search for a digit pattern. In PostgreSQL, REGEXP_MATCH returns an array for the first match; selecting its first element gives the first contiguous run matched by [0-9]+. When no digits are present the function returns null, preserving the row and making missing numeric content explicit. This study contract returns one run rather than concatenating every digit from the input. For instance, the independently supplied example AB12-CD34 would yield 12.",
+      "Clarify that contract because extracting 12, extracting both 12 and 34, and producing 1234 are different operations. Use REGEXP_MATCHES with the global flag when separate runs are required, and consider its set-returning behavior for unmatched rows. Keep the digits as text if leading zeros are meaningful. An ASCII pattern intentionally excludes other digit scripts, signs, and decimal separators. For a business identifier those restrictions are often useful, but for numeric data you would need a richer grammar and explicit conversion-error handling."
+    ],
+    "code": "-- PostgreSQL; study schema: identifiers(id text)\nSELECT id, (REGEXP_MATCH(id, '[0-9]+'))[1] AS first_digit_run\nFROM identifiers;",
+    "language": "sql",
+    "pitfalls": ["Removing all non-digits and accidentally merging separate numeric fields.", "Using a set-returning regex function that drops unmatched input rows unexpectedly."],
+    "followups": ["Study extension: return every digit run with its position.", "Study extension: accept signed decimal values under an explicit format contract."],
+    "sourceUrl": "https://www.postgresql.org/docs/current/functions-matching.html",
+    "provenance": {
+      "kind": "candidate-reported",
+      "scope": "reported-question",
+      "url": "https://www.linkedin.com/posts/gireeshgalande_bigdata-dataengineer-interview-activity-7333175778550898690-M6LJ",
+      "author": "Gireesh Galande",
+      "title": "MAN interview",
+      "company": "MAN Truck & Bus SE",
+      "experience": "2+ years",
+      "accessedAt": "2026-11-18",
+      "note": "Self-reported interview experience; not independently verified. Question paraphrased; answer independently written."
+    }
+  },
+  {
+    "id": "li-sql-008",
+    "subject": "sql",
+    "topic": "Window functions",
+    "subtopic": "Month-over-month deltas with missing months",
+    "title": "Monthly sales change",
+    "difficulty": "Intermediate",
+    "type": "Coding",
+    "minutes": 10,
+    "prompt": "Calculate monthly sales changes. Study assumptions: monthly_sales(month,sales); month is unique and normalized to month-start.",
+    "answer": [
+      "Use LAG to retrieve the preceding row's month and sales, then subtract its sales from the current month's sales. A date column is necessary to order months across year boundaries; month names alone cannot identify a chronological sequence. The study query also checks that the previous row is exactly one calendar month earlier. It returns null for the first month or a gap, because a missing month is not automatically a zero-sales month and should not silently become a month-over-month comparison.",
+      "If the input contains transactions or several rows per month, aggregate to monthly grain before applying the window. If the business defines absent months as zero, create a calendar series, left join totals, and fill only those deliberately absent totals. That is an additional business rule. Distinguish absolute change from percentage growth: percentage growth also needs a rule for a zero prior denominator. Test December to January, missing months, null sales, and a known zero-sales month separately so the expected behavior is explicit."
+    ],
+    "code": "-- PostgreSQL; study schema: monthly_sales(month date PRIMARY KEY, sales numeric)\nWITH previous AS (\n  SELECT month, sales,\n         LAG(month) OVER (ORDER BY month) AS previous_month,\n         LAG(sales) OVER (ORDER BY month) AS previous_sales\n  FROM monthly_sales\n)\nSELECT month, sales,\n       CASE WHEN month = (previous_month + INTERVAL '1 month')::date\n            THEN sales - previous_sales\n       END AS monthly_change\nFROM previous\nORDER BY month;",
+    "language": "sql",
+    "pitfalls": ["Comparing with the previous available month when a calendar month is missing.", "Applying LAG to transaction rows before aggregating to monthly totals."],
+    "followups": ["Study extension: generate missing months and apply a documented zero-fill policy.", "Study extension: calculate percentage growth with a zero-denominator rule."],
+    "sourceUrl": "https://www.postgresql.org/docs/current/functions-window.html",
+    "provenance": {
+      "kind": "candidate-reported",
+      "scope": "reported-question",
+      "url": "https://www.linkedin.com/posts/gireeshgalande_bigdata-dataengineer-interview-activity-7333175778550898690-M6LJ",
+      "author": "Gireesh Galande",
+      "title": "MAN interview",
+      "company": "MAN Truck & Bus SE",
+      "experience": "2+ years",
+      "accessedAt": "2026-11-18",
+      "note": "Self-reported interview experience; not independently verified. Question paraphrased; answer independently written."
+    }
+  },
+  {
+    "id": "li-sql-009",
+    "subject": "sql",
+    "topic": "Window functions",
+    "subtopic": "ROW_NUMBER versus RANK versus DENSE_RANK",
+    "title": "Ranking tied rows",
+    "difficulty": "Intermediate",
+    "type": "Concept",
+    "minutes": 8,
+    "prompt": "Compare three ranking outputs. Study assumptions: partition by group_id; order tied scores descending.",
+    "answer": [
+      "Each partition restarts the numbering. ROW_NUMBER assigns a different sequential position to every row, even when ordering values tie. RANK gives tied rows the same position and skips subsequent positions. DENSE_RANK also shares the position for ties but advances to the next distinct position without a gap. For the independently supplied scores 90, 90, and 70, the ranks are 1, 1, 3 and the dense ranks are 1, 1, 2. The row numbers are 1, 2, 3 in some tie order.",
+      "A tie-breaker has different effects depending on where it is placed. Adding a unique identifier to ROW_NUMBER makes individual row selection reproducible. Adding that identifier to RANK or DENSE_RANK changes which rows are peers and can eliminate the score ties that the question is intended to illustrate. The study query therefore uses the identifier only for ROW_NUMBER and final display ordering. State the null-ordering rule explicitly, and do not assume the order used within a window automatically guarantees the final result's presentation order."
+    ],
+    "code": "-- PostgreSQL; study schema: scores(id bigint PRIMARY KEY, group_id text, score numeric)\nSELECT id, group_id, score,\n       ROW_NUMBER() OVER (PARTITION BY group_id ORDER BY score DESC NULLS LAST, id) AS row_no,\n       RANK() OVER (PARTITION BY group_id ORDER BY score DESC NULLS LAST) AS score_rank,\n       DENSE_RANK() OVER (PARTITION BY group_id ORDER BY score DESC NULLS LAST) AS dense_score_rank\nFROM scores\nORDER BY group_id, score DESC NULLS LAST, id;",
+    "language": "sql",
+    "pitfalls": ["Assuming tied rows receive a stable ROW_NUMBER without a tie-breaker.", "Adding a unique identifier to every window and unintentionally removing rank ties."],
+    "followups": ["Study extension: explain why RANK <= 2 and DENSE_RANK <= 2 can return different rows.", "Study extension: predict the result when a partition contains only null scores."],
+    "sourceUrl": "https://www.postgresql.org/docs/current/functions-window.html",
+    "provenance": {
+      "kind": "candidate-reported",
+      "scope": "reported-question",
+      "url": "https://www.linkedin.com/posts/gireeshgalande_bigdata-dataengineer-interview-activity-7333175778550898690-M6LJ",
+      "author": "Gireesh Galande",
+      "title": "MAN interview",
+      "company": "MAN Truck & Bus SE",
+      "experience": "2+ years",
+      "accessedAt": "2026-11-18",
+      "note": "Self-reported interview experience; not independently verified. Question paraphrased; answer independently written."
+    }
+  },
+  {
+    "id": "li-python-001",
+    "subject": "python",
+    "topic": "Strings",
+    "subtopic": "Vowel and consonant classification",
+    "title": "Vowels and consonants",
+    "difficulty": "Intermediate",
+    "type": "Coding",
+    "minutes": 8,
+    "prompt": "Separate vowels/consonants. Study assumptions: split ASCII letters; ignore other characters.",
+    "answer": [
+      "The candidate reported string separation involving vowels and consonants, but did not publish the exact input contract. This study version classifies individual ASCII letters into two output strings while preserving their original order and case. Convert a character to lowercase for membership checks, then append the original character to the appropriate accumulator. Restricting membership to the ASCII alphabet prevents digits, punctuation, and whitespace from being mistakenly classified as consonants. Joining the accumulated lists builds the final strings without repeatedly rebuilding long immutable strings.",
+      "The algorithm visits each input character once and stores at most one output character for each accepted letter, so its work and output storage grow linearly with the input length. A broader language requirement would need an explicit alphabet and vowel definition; isalpha alone does not provide a universal consonant classifier. Verify an empty string, uppercase vowels, repeated letters, and mixed punctuation. If the actual interviewer meant separating whole words rather than characters, establish the word-level rule before adapting the solution."
+    ],
+    "code": "from string import ascii_lowercase\n\ndef split_letters(text):\n    vowels, consonants = [], []\n    for character in text:\n        lower = character.lower()\n        if lower in 'aeiou':\n            vowels.append(character)\n        elif lower in ascii_lowercase:\n            consonants.append(character)\n    return ''.join(vowels), ''.join(consonants)\n\nassert split_letters('Azure 42!') == ('Aue', 'zr')",
+    "language": "python",
+    "pitfalls": ["Treating every non-vowel, including spaces and digits, as a consonant.", "Applying an English vowel set to all Unicode letters without a language policy."],
+    "followups": ["Study extension: classify complete words under a specified rule.", "Study extension: adapt the classifier for a defined non-English alphabet."],
+    "sourceUrl": "https://docs.python.org/3/library/stdtypes.html#str.lower",
+    "provenance": {
+      "kind": "candidate-reported",
+      "scope": "reported-topic",
+      "url": "https://www.linkedin.com/posts/poorvasha97_azuredataengineer-dataengineering-azure-activity-7498308041554075648-cfGF",
+      "author": "POORVASHA .",
+      "title": "Tredence interview",
+      "company": "Tredence Inc.",
+      "experience": "6 years",
+      "accessedAt": "2026-11-18",
+      "note": "Self-reported interview experience; not independently verified. Question paraphrased; answer independently written."
+    }
+  },
+  {
+    "id": "li-python-002",
+    "subject": "python",
+    "topic": "Algorithms",
+    "subtopic": "Primality testing with integer bounds",
+    "title": "Primality test",
+    "difficulty": "Intermediate",
+    "type": "Coding",
+    "minutes": 8,
+    "prompt": "Test primality. Study assumptions: accept integers; reject Boolean inputs.",
+    "answer": [
+      "A prime is an integer greater than one with no positive divisors except one and itself. Reject values below two, accept two, and reject larger even values. For an odd remaining number, test odd divisors through its integer square root, inclusive. If a composite number equals a times b and both factors exceeded its square root, their product would exceed the number. Therefore every composite has a factor within this bound, and testing larger possible divisors is unnecessary.",
+      "Use math.isqrt to avoid a floating-point square-root boundary for large Python integers. The loop must include the square-root candidate so perfect squares such as 49 are rejected. Trial division requires roughly the square root of n arithmetic checks in the worst case; the cost of arithmetic itself also grows for large integers. This is suitable for the study exercise but not a claim of cryptographic-scale efficiency. Explicitly rejecting bool avoids accepting True or False merely because Python treats them as integer subclasses."
+    ],
+    "code": "from math import isqrt\n\ndef is_prime(number):\n    if isinstance(number, bool) or not isinstance(number, int):\n        raise TypeError('number must be an integer, not bool')\n    if number < 2:\n        return False\n    if number == 2:\n        return True\n    if number % 2 == 0:\n        return False\n    return all(number % divisor != 0\n               for divisor in range(3, isqrt(number) + 1, 2))\n\nassert [is_prime(n) for n in (-3, 0, 1, 2, 17, 49)] == [False, False, False, True, True, False]",
+    "language": "python",
+    "pitfalls": ["Calling 1 prime or forgetting to handle negative integers.", "Excluding the square-root endpoint and accepting perfect squares."],
+    "followups": ["Study extension: compare repeated trial division with a sieve for many bounded queries.", "Study extension: explain why very large candidates need a different primality strategy."],
+    "sourceUrl": "https://docs.python.org/3/library/math.html#math.isqrt",
+    "provenance": {
+      "kind": "candidate-reported",
+      "scope": "reported-topic",
+      "url": "https://www.linkedin.com/posts/poorvasha97_azuredataengineer-dataengineering-azure-activity-7498308041554075648-cfGF",
+      "author": "POORVASHA .",
+      "title": "Tredence interview",
+      "company": "Tredence Inc.",
+      "experience": "6 years",
+      "accessedAt": "2026-11-18",
+      "note": "Self-reported interview experience; not independently verified. Question paraphrased; answer independently written."
+    }
+  },
+  {
+    "id": "li-python-003",
+    "subject": "python",
+    "topic": "Collections",
+    "subtopic": "List and tuple mutability",
+    "title": "Lists versus tuples",
+    "difficulty": "Intermediate",
+    "type": "Concept",
+    "minutes": 8,
+    "prompt": "Compare lists and tuples, including mutability, nested values, and dictionary-key suitability.",
+    "answer": [
+      "Both lists and tuples are ordered sequences with indexing, iteration, and slicing. A list permits element replacement and structural changes such as appending or removing items. A tuple fixes its element references after construction, making it useful when a sequence's positions describe a stable record. That immutability is shallow: a list referenced inside a tuple can still be modified. A one-item tuple needs a trailing comma; parentheses around a single expression alone do not create a tuple.",
+      "Dictionary keys must be hashable. A tuple can serve as a key only when all of its elements are hashable, recursively; a tuple containing a list is therefore unsuitable even though the outer tuple is immutable. Use a list for an evolving collection and a tuple for a fixed grouping when that matches the domain. Do not justify the choice solely with blanket speed claims. Explain the mutation contract, how callers may share nested objects, and whether accidental changes would violate the meaning of the data."
+    ],
+    "code": "values = [10, 20]\nvalues.append(30)\nrecord = ('sensor-a', values)\nrecord[1].append(40)  # The nested list remains mutable.\nassert record == ('sensor-a', [10, 20, 30, 40])\n\nlookup = {('sensor-a', 2026): 7}\nassert lookup[('sensor-a', 2026)] == 7\nsingleton = ('sensor-a',)\nassert len(singleton) == 1",
+    "language": "python",
+    "pitfalls": ["Assuming tuple immutability freezes nested mutable objects.", "Assuming every tuple is hashable regardless of its contents."],
+    "followups": ["Study extension: demonstrate aliasing after a shallow list copy.", "Study extension: choose a tuple, named tuple, or data class for a small record."],
+    "sourceUrl": "https://docs.python.org/3/tutorial/datastructures.html#tuples-and-sequences",
+    "provenance": {
+      "kind": "candidate-reported",
+      "scope": "reported-topic",
+      "url": "https://www.linkedin.com/posts/arvindkumar007_dataengineering-accenture-interviewexperience-activity-7415218275225198592-92B6",
+      "author": "Arvind Saharan",
+      "title": "Accenture interview",
+      "company": "Accenture",
+      "experience": null,
+      "accessedAt": "2026-11-18",
+      "note": "Self-reported interview experience; not independently verified. Question paraphrased; answer independently written."
+    }
+  },
+  {
+    "id": "li-python-004",
+    "subject": "python",
+    "topic": "Collections",
+    "subtopic": "Dictionary access, updates, and iteration",
+    "title": "Dictionary operations",
+    "difficulty": "Intermediate",
+    "type": "Concept",
+    "minutes": 8,
+    "prompt": "Explain common dictionary operations and safe handling of missing keys and iteration.",
+    "answer": [
+      "A dictionary associates unique hashable keys with values. Indexing a missing key raises KeyError, while get can return a supplied default without inserting the key. Assignment inserts or replaces a value; membership tests keys; items supports key-value iteration. Insertion order is guaranteed in modern Python, but it is not a sorted order. Updating an existing key does not move it to the end. These contracts matter when a pipeline builds reproducible records or distinguishes an absent field from a field whose value is None.",
+      "The independently supplied counting example demonstrates access and update without claiming the candidate was asked this exact exercise. Increment a count using its current value or zero when absent. When deleting selected keys, collect the keys first rather than changing dictionary size while iterating its live view. Choose a sentinel if a default value would otherwise be indistinguishable from legitimate stored data. For large inputs, discuss the number of distinct keys and their storage cost, not just the number of input records."
+    ],
+    "code": "def frequencies(values):\n    counts = {}\n    for value in values:\n        counts[value] = counts.get(value, 0) + 1\n    return counts\n\ncounts = frequencies(['east', 'west', 'east'])\nassert counts == {'east': 2, 'west': 1}\nkeys_to_remove = [key for key, count in counts.items() if count < 2]\nfor key in keys_to_remove:\n    del counts[key]\nassert counts == {'east': 2}",
+    "language": "python",
+    "pitfalls": ["Confusing an absent key with a key whose stored value is None.", "Adding or deleting keys while iterating a live dictionary view."],
+    "followups": ["Study extension: compare get, setdefault, and defaultdict for grouping.", "Study extension: preserve a distinct sentinel for missing data."],
+    "sourceUrl": "https://docs.python.org/3/library/stdtypes.html#mapping-types-dict",
+    "provenance": {
+      "kind": "candidate-reported",
+      "scope": "reported-topic",
+      "url": "https://www.linkedin.com/posts/arvindkumar007_dataengineering-accenture-interviewexperience-activity-7415218275225198592-92B6",
+      "author": "Arvind Saharan",
+      "title": "Accenture interview",
+      "company": "Accenture",
+      "experience": null,
+      "accessedAt": "2026-11-18",
+      "note": "Self-reported interview experience; not independently verified. Question paraphrased; answer independently written."
+    }
+  },
+  {
+    "id": "li-python-005",
+    "subject": "python",
+    "topic": "Language fundamentals",
+    "subtopic": "List comprehensions and evaluation",
+    "title": "List comprehensions",
+    "difficulty": "Intermediate",
+    "type": "Concept",
+    "minutes": 8,
+    "prompt": "Explain list comprehensions, filtering, evaluation, and when a generator is preferable.",
+    "answer": [
+      "A list comprehension creates a new list from an iterable by applying an expression to each item that passes its optional conditions. Read its clauses in loop order: iterate, test the filter, and then evaluate the output expression. The example is a study demonstration of the reported concept, not an additional claimed interview problem. A comprehension is useful when a compact transformation remains readable. Complex branching, exception handling, or operations performed mainly for side effects are usually clearer in a normal loop.",
+      "A list comprehension evaluates its results eagerly and stores them. A generator expression instead provides values on demand, which can reduce intermediate storage when a consumer reads values once. That difference also affects when work and failures occur, so the two are not a purely cosmetic substitution. Keep expensive repeated calls out of both the filter and the result expression when a single computation would suffice. For nested comprehensions, verify the loop order with a small input before using the expression on a large dataset."
+    ],
+    "code": "values = [-2, -1, 0, 1, 2, 3]\nsquares = [value * value for value in values if value > 0]\nassert squares == [1, 4, 9]\n\n# A generator avoids materializing an intermediate list for this sum.\ntotal = sum(value * value for value in values if value > 0)\nassert total == 14",
+    "language": "python",
+    "pitfalls": ["Using comprehensions for side effects and discarding their allocated result list.", "Assuming a generator runs and stores all results immediately."],
+    "followups": ["Study extension: translate a nested comprehension into explicit loops.", "Study extension: process a large input with a single-pass generator."],
+    "sourceUrl": "https://docs.python.org/3/reference/expressions.html#displays-for-lists-sets-and-dictionaries",
+    "provenance": {
+      "kind": "candidate-reported",
+      "scope": "reported-topic",
+      "url": "https://www.linkedin.com/posts/arvindkumar007_dataengineering-accenture-interviewexperience-activity-7415218275225198592-92B6",
+      "author": "Arvind Saharan",
+      "title": "Accenture interview",
+      "company": "Accenture",
+      "experience": null,
+      "accessedAt": "2026-11-18",
+      "note": "Self-reported interview experience; not independently verified. Question paraphrased; answer independently written."
+    }
+  },
+  {
+    "id": "li-python-006",
+    "subject": "python",
+    "topic": "Algorithms",
+    "subtopic": "Minimum pairwise absolute difference",
+    "title": "Smallest pair difference",
+    "difficulty": "Intermediate",
+    "type": "Coding",
+    "minutes": 10,
+    "prompt": "Find the smallest element difference. Study assumptions: integer list; absolute difference between distinct positions.",
+    "answer": [
+      "Sort a copy of the input and compare neighboring values. In sorted order, any non-neighboring pair spans at least one neighboring gap, so it cannot have a smaller positive gap than every neighboring pair it contains. Therefore the minimum absolute difference appears between adjacent sorted elements. Distinct positions may contain equal values, in which case the answer is zero. A copy preserves the caller's original ordering, which may be needed by later processing or by a test that checks the function's side effects.",
+      "Require at least two elements because there is no pair otherwise. The study implementation raises ValueError rather than returning a misleading numeric result for an empty or singleton list. Sorting takes O(n log n) time in the general case, and the scan takes O(n). The sorted copy uses O(n) storage, with sorting implementation details affecting additional workspace. A brute-force pair comparison is useful as an independent reference for small random inputs, but its quadratic work is unnecessary for the main solution."
+    ],
+    "code": "def minimum_difference(values):\n    ordered = sorted(values)\n    if len(ordered) < 2:\n        raise ValueError('at least two elements are required')\n    return min(right - left for left, right in zip(ordered, ordered[1:]))\n\nassert minimum_difference([8, 2, 3, 11]) == 1\nassert minimum_difference([4, 4, 9]) == 0\nassert minimum_difference([-8, -3, 6]) == 5",
+    "language": "python",
+    "pitfalls": ["Checking neighbors in the original unsorted input.", "Removing duplicates even though equal values at distinct positions imply zero difference."],
+    "followups": ["Study extension: return the closest pair as well as its difference.", "Study extension: verify the sorted solution against a small brute-force reference."],
+    "sourceUrl": "https://docs.python.org/3/tutorial/datastructures.html#more-on-lists",
+    "provenance": {
+      "kind": "candidate-reported",
+      "scope": "reported-question",
+      "url": "https://www.linkedin.com/posts/gireeshgalande_bigdata-dataengineer-interview-activity-7333175778550898690-M6LJ",
+      "author": "Gireesh Galande",
+      "title": "MAN interview",
+      "company": "MAN Truck & Bus SE",
+      "experience": "2+ years",
+      "accessedAt": "2026-11-18",
+      "note": "Self-reported interview experience; not independently verified. Question paraphrased; answer independently written."
+    }
+  },
+  {
+    "id": "li-python-007",
+    "subject": "python",
+    "topic": "Error handling",
+    "subtopic": "Targeted exception handling and chaining",
+    "title": "Handle exceptions",
+    "difficulty": "Intermediate",
+    "type": "Coding",
+    "minutes": 8,
+    "prompt": "Demonstrate exception handling. Study assumptions: parse a positive integer and preserve invalid-input context.",
+    "answer": [
+      "The candidate reported being asked to write exception-handling code, without specifying the operation. In this study example, keep the try block small and catch only the expected conversion failures. Converting an invalid string can raise ValueError; an incompatible object can raise TypeError. Raise a meaningful ValueError for the public function and chain the original exception with from so debugging retains the original cause. Validate the positive-value requirement separately after a successful conversion rather than accidentally treating every validation failure as a parsing failure.",
+      "Catching Exception around a large operation can conceal programming defects and make bad data appear successfully processed. Decide at the caller boundary whether to reject, quarantine, or report invalid input; silently returning zero changes the meaning of the data. Use a finally block for cleanup that must run regardless of success, and prefer a context manager for resources that support it. The supplied function accepts strings as its study contract and rejects non-string inputs explicitly, avoiding accidental truncation of floating-point values by int."
+    ],
+    "code": "def parse_positive_integer(text):\n    if not isinstance(text, str):\n        raise TypeError('text must be a string')\n    try:\n        value = int(text)\n    except (ValueError, TypeError) as error:\n        raise ValueError('expected an integer string') from error\n    if value <= 0:\n        raise ValueError('value must be positive')\n    return value\n\nassert parse_positive_integer('12') == 12",
+    "language": "python",
+    "pitfalls": ["Using a bare except and hiding unrelated failures.", "Silently substituting a valid-looking default for invalid input."],
+    "followups": ["Study extension: use a context manager for file cleanup.", "Study extension: quarantine bad records while preserving their error reasons."],
+    "sourceUrl": "https://docs.python.org/3/tutorial/errors.html",
+    "provenance": {
+      "kind": "candidate-reported",
+      "scope": "reported-question",
+      "url": "https://www.linkedin.com/posts/gireeshgalande_bigdata-dataengineer-interview-activity-7333175778550898690-M6LJ",
+      "author": "Gireesh Galande",
+      "title": "MAN interview",
+      "company": "MAN Truck & Bus SE",
+      "experience": "2+ years",
+      "accessedAt": "2026-11-18",
+      "note": "Self-reported interview experience; not independently verified. Question paraphrased; answer independently written."
+    }
+  },
+  {
+    "id": "li-python-008",
+    "subject": "python",
+    "topic": "Strings",
+    "subtopic": "Adjacent-character scanning",
+    "title": "Vowel successors",
+    "difficulty": "Intermediate",
+    "type": "Coding",
+    "minutes": 8,
+    "prompt": "Emit non-vowel successors of vowels. Study assumptions: immediate next character; case-insensitive ASCII vowel set.",
+    "answer": [
+      "Scan adjacent pairs of characters. When the first character is a vowel and the immediately following character is not a vowel, include the following character in the result. Pairing the string with its one-character-shifted slice naturally omits a final vowel with no successor. Preserve the original spelling of the successor and compare lowercase forms only for the membership checks. This follows the immediate-successor study interpretation; it does not skip a run of vowels to search farther ahead for a consonant.",
+      "The reported condition excludes vowel successors but does not explicitly exclude spaces, punctuation, or digits. The study implementation therefore permits those characters as non-vowels; ask for a letter-only rule before adding that restriction. A sequence such as aeiX emits X once from the i-X pair. Repeated qualifying pairs can emit the same character more than once because deduplication was not requested. The scan takes linear time. The shifted string and output list use linear additional storage; an index-based or iterator-based scan can avoid the shifted copy."
+    ],
+    "code": "def vowel_successors(text):\n    vowels = set('aeiou')\n    return [following\n            for current, following in zip(text, text[1:])\n            if current.lower() in vowels and following.lower() not in vowels]\n\nassert vowel_successors('aeiXoB') == ['X', 'B']\nassert vowel_successors('a!e') == ['!']\nassert vowel_successors('aeiou') == []",
+    "language": "python",
+    "pitfalls": ["Skipping forward to a later consonant instead of checking the immediate successor.", "Reading beyond the end when the final character is a vowel."],
+    "followups": ["Study extension: enforce alphabetic successors only.", "Study extension: avoid making the shifted string copy."],
+    "sourceUrl": "https://docs.python.org/3/library/stdtypes.html#common-sequence-operations",
+    "provenance": {
+      "kind": "candidate-reported",
+      "scope": "reported-question",
+      "url": "https://www.linkedin.com/posts/gireeshgalande_bigdata-dataengineer-interview-activity-7333175778550898690-M6LJ",
+      "author": "Gireesh Galande",
+      "title": "MAN interview",
+      "company": "MAN Truck & Bus SE",
+      "experience": "2+ years",
+      "accessedAt": "2026-11-18",
+      "note": "Self-reported interview experience; not independently verified. Question paraphrased; answer independently written."
+    }
+  },
+  {
+    "id": "li-python-009",
+    "subject": "python",
+    "topic": "Strings",
+    "subtopic": "Fixed-width chunks and stable deduplication",
+    "title": "Unique characters per chunk",
+    "difficulty": "Intermediate",
+    "type": "Coding",
+    "minutes": 10,
+    "prompt": "Chunk a string and deduplicate each chunk. Study assumptions: preserve first appearance; positive integer width.",
+    "answer": [
+      "Move through the string in non-overlapping steps of the requested width. For each slice, construct an insertion-ordered dictionary from its characters and join the keys. Each character appears as a key once, while the dictionary preserves the order of first insertion. This removes repetitions within one chunk without disturbing the order of retained characters. Reset the dictionary for every chunk so a character present in an earlier chunk is still allowed in a later one. Keep the final short slice when the length is not divisible by the width.",
+      "Validate that width is a positive integer before using it as a range step, and reject Boolean values if the public contract distinguishes them from integers. An empty input then returns an empty list naturally. A plain set is insufficient when stable output ordering is required. Across all chunks, the algorithm processes a linear number of characters, with intermediate storage bounded by a chunk and total output storage bounded by the input size. For user-visible text, explain that Python slices operate on Unicode code points rather than complete grapheme clusters."
+    ],
+    "code": "def unique_chunks(text, width):\n    if isinstance(width, bool) or not isinstance(width, int):\n        raise TypeError('width must be an integer, not bool')\n    if width <= 0:\n        raise ValueError('width must be positive')\n    return [''.join(dict.fromkeys(text[start:start + width]))\n            for start in range(0, len(text), width)]\n\nassert unique_chunks('aabccde', 3) == ['ab', 'cd', 'e']\nassert unique_chunks('', 3) == []",
+    "language": "python",
+    "pitfalls": ["Deduplicating the entire string before splitting it into chunks.", "Using an unordered set when first-occurrence ordering matters."],
+    "followups": ["Study extension: yield chunks lazily instead of returning a list.", "Study extension: define chunking in grapheme clusters for user-facing text."],
+    "sourceUrl": "https://docs.python.org/3/library/stdtypes.html#dict.fromkeys",
+    "provenance": {
+      "kind": "candidate-reported",
+      "scope": "reported-question",
+      "url": "https://www.linkedin.com/posts/gireeshgalande_bigdata-dataengineer-interview-activity-7333175778550898690-M6LJ",
+      "author": "Gireesh Galande",
+      "title": "MAN interview",
+      "company": "MAN Truck & Bus SE",
+      "experience": "2+ years",
+      "accessedAt": "2026-11-18",
+      "note": "Self-reported interview experience; not independently verified. Question paraphrased; answer independently written."
+    }
+  }
+]

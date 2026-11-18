@@ -1,0 +1,80 @@
+[
+  {
+    "id": "li-postgres-d001",
+    "subject": "postgres",
+    "topic": "Application integration",
+    "subtopic": "JDBC connectivity and pooled data sources",
+    "title": "Connect a Spring Boot application to PostgreSQL",
+    "difficulty": "Intermediate",
+    "type": "Scenario",
+    "minutes": 10,
+    "prompt": "How would you integrate PostgreSQL with Spring Boot? Study assumptions: JDBC application with a pooled DataSource.",
+    "answer": [
+      "Add the PostgreSQL JDBC driver and an appropriate Spring JDBC or JPA starter, then configure the DataSource URL, database name and credentials. A URL such as jdbc:postgresql://db:5432/study identifies a server and database, not a schema. Spring can configure a connection pool from these settings; the driver supports automatic discovery when its JAR is on the classpath, so application code normally does not need Class.forName. Supply credentials through the environment or a secret store rather than committing them to source control.",
+      "Validate the connection from the application's runtime network, then confirm the database, role and schema with a small query. A successful TCP connection does not establish that the role has the required table privileges or resolves the intended schema. Apply versioned migrations before serving requests and define transaction boundaries at the service layer. Bound pool size against the server's connection budget across every application replica; a larger pool is not automatically faster. Use properly validated TLS for remote deployments, and investigate authentication, DNS and migration failures separately."
+    ],
+    "code": "# Study assumptions: Spring JDBC/JPA starter and pgJDBC are installed.\n# db is the database hostname reachable from this application's network.\nspring:\n  datasource:\n    url: jdbc:postgresql://db:5432/study\n    username: ${DB_USER}\n    password: ${DB_PASSWORD}\n# Verify using a query through the configured DataSource:\n# SELECT current_database(), current_user, current_schema();",
+    "language": "yaml",
+    "pitfalls": [
+      "Using localhost inside an application container to reach a separate database container.",
+      "Assuming a JDBC URL names a schema, or relying on a privileged default user.",
+      "Sizing each application's pool without accounting for all replicas."
+    ],
+    "followups": [
+      "How would you distinguish connection refusal, authentication failure and missing-schema errors?",
+      "How would you allocate a shared PostgreSQL connection budget across multiple services?"
+    ],
+    "sourceUrl": "https://jdbc.postgresql.org/documentation/use/",
+    "provenance": {
+      "kind": "candidate-reported",
+      "url": "https://www.linkedin.com/posts/putul-kumari-9332261a9_java-springboot-javadeveloper-activity-7491438045184057345-0S2S",
+      "author": "Putul kumari",
+      "title": "Java backend first-round report",
+      "company": null,
+      "experience": null,
+      "role": "Java Backend Developer",
+      "accessedAt": "2026-11-18",
+      "scope": "reported-question",
+      "note": "Self-reported interview experience; not independently verified. This is a Java backend report, not a claim of a senior data-engineer interview. Question paraphrased; answer and configuration examples independently written as labeled study assumptions."
+    }
+  },
+  {
+    "id": "li-postgres-d002",
+    "subject": "postgres",
+    "topic": "Application integration",
+    "subtopic": "Container networking, readiness and persistence",
+    "title": "Run an application and PostgreSQL with Compose",
+    "difficulty": "Intermediate",
+    "type": "Scenario",
+    "minutes": 10,
+    "prompt": "How would you run Spring Boot and PostgreSQL together using Docker Compose?",
+    "answer": [
+      "Define separate application and database services on the Compose network, and connect the application to the database service name rather than localhost. For a PostgreSQL 17 study environment, persist the database data directory in a named volume and provide initialization credentials through the environment. The application must already have a valid JDBC driver, packaged image and DataSource configuration. Publishing the database port to the host is unnecessary when only the application service needs access; container-to-container connections use the internal service port.",
+      "Startup order and readiness are different. Configure a PostgreSQL health check with pg_isready and make the application depend on a healthy database, while retaining application-side connection retry handling for later restarts. pg_isready checks whether the server accepts connections; it does not prove that credentials, schema migrations or application queries are valid. Check those separately. Pin the PostgreSQL major version because image data-directory conventions and upgrade procedures can differ. A named volume survives normal container recreation, but it is not a backup; removing volumes can destroy the only data copy."
+    ],
+    "code": "# Study assumptions: PostgreSQL 17; my-spring-app:local is already built.\n# DB_PASSWORD is supplied securely outside this study file.\nservices:\n  app:\n    image: my-spring-app:local\n    environment:\n      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/study\n      SPRING_DATASOURCE_USERNAME: study_app\n      SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD}\n    depends_on:\n      db:\n        condition: service_healthy\n  db:\n    image: postgres:17\n    environment:\n      POSTGRES_DB: study\n      POSTGRES_USER: study_app\n      POSTGRES_PASSWORD: ${DB_PASSWORD}\n    volumes:\n      - pgdata:/var/lib/postgresql/data\n    healthcheck:\n      test: [\"CMD-SHELL\", \"pg_isready -U study_app -d study\"]\n      interval: 5s\n      timeout: 3s\n      retries: 10\nvolumes:\n  pgdata:\n# For production, separate bootstrap/owner credentials from a restricted app role.",
+    "language": "yaml",
+    "pitfalls": [
+      "Treating a running container or a successful pg_isready check as proof that migrations and credentials work.",
+      "Using the database bootstrap superuser as the production application role.",
+      "Removing a named volume while expecting container recreation to preserve the data."
+    ],
+    "followups": [
+      "How should the application recover if PostgreSQL restarts after initial startup?",
+      "How would you test restoring this database without touching the original volume?"
+    ],
+    "sourceUrl": "https://www.postgresql.org/docs/17/app-pg-isready.html",
+    "provenance": {
+      "kind": "candidate-reported",
+      "url": "https://www.linkedin.com/posts/putul-kumari-9332261a9_java-springboot-javadeveloper-activity-7491438045184057345-0S2S",
+      "author": "Putul kumari",
+      "title": "Java backend first-round report",
+      "company": null,
+      "experience": null,
+      "role": "Java Backend Developer",
+      "accessedAt": "2026-11-18",
+      "scope": "reported-question",
+      "note": "Self-reported interview experience; not independently verified. This is a Java backend report, not a claim of a senior data-engineer interview. Question paraphrased; answer and configuration examples independently written as labeled study assumptions."
+    }
+  }
+]

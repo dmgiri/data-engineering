@@ -1,0 +1,195 @@
+[
+  {
+    "id": "li-postgres-001",
+    "subject": "postgres",
+    "topic": "Database fundamentals",
+    "subtopic": "PostgreSQL and MySQL comparison",
+    "title": "Compare PostgreSQL with MySQL",
+    "difficulty": "Intermediate",
+    "type": "Concept",
+    "minutes": 10,
+    "prompt": "What differences would you explain between PostgreSQL and MySQL?",
+    "answer": [
+      "PostgreSQL is an extensible object-relational database: users can add types, functions, operators and index methods. A concrete difference from MySQL is the meaning of a schema. PostgreSQL schemas are namespaces inside a database, and two schemas can contain separate tables with the same name. In MySQL, CREATE SCHEMA is another spelling of CREATE DATABASE. That distinction matters when moving table names, permissions and application configuration between the systems.",
+      "For a database decision, compare the actual supported versions against the application's SQL, data types, transaction requirements, extensions, driver support and operational practices. PostgreSQL's extensibility can matter when a workload needs specialized types or database behavior. Test representative reads and writes with realistic indexes and concurrency before making performance claims. A useful interview answer connects each difference to a requirement; a generic claim that one database is always faster provides no evidence about the proposed workload."
+    ],
+    "code": "",
+    "language": "sql",
+    "pitfalls": [
+      "Treating a PostgreSQL schema as a separate database because MySQL uses those terms interchangeably.",
+      "Claiming either database is universally faster without specifying versions, queries and workload."
+    ],
+    "followups": [
+      "Which PostgreSQL-specific features would make an application migration more difficult?",
+      "How would you design a representative benchmark for this choice?"
+    ],
+    "sourceUrl": "https://www.postgresql.org/docs/current/intro-whatis.html",
+    "provenance": {
+      "kind": "candidate-reported",
+      "url": "https://www.linkedin.com/posts/syed-faizan-jamal-45162b208_fullstackdeveloper-nodejs-reactjs-activity-7506359803397607424-TAOF",
+      "author": "Syed Faizan Jamal",
+      "title": "Full stack interview report",
+      "company": null,
+      "experience": null,
+      "role": "Full Stack Developer",
+      "accessedAt": "2026-11-18",
+      "note": "Self-reported interview experience; not independently verified. Question paraphrased; answer independently written.",
+      "scope": "reported-question"
+    }
+  },
+  {
+    "id": "li-postgres-002",
+    "subject": "postgres",
+    "topic": "Database organization",
+    "subtopic": "Creating schemas and resolving object names",
+    "title": "Create and use a PostgreSQL schema",
+    "difficulty": "Intermediate",
+    "type": "Concept",
+    "minutes": 8,
+    "prompt": "How would you create a schema in PostgreSQL?",
+    "answer": [
+      "Create a namespace in the connected database with CREATE SCHEMA analytics; specify AUTHORIZATION when it should belong to another role. Put objects into it using qualified names such as analytics.events. A schema organizes objects inside a database rather than creating a new database or a separate connection boundary. For example, staging.events and analytics.events can coexist, allowing a pipeline's intermediate and published tables to have independent names and permissions.",
+      "Explain object resolution and permissions as well as creation. An unqualified name is resolved through search_path; the first matching object is selected. Schema USAGE permits access to the namespace, while table access requires the relevant object privileges. CREATE on a schema separately controls who can add objects there. Including a schema writable by untrusted users in search_path can change which functions or objects a query resolves, so use deliberate privileges and qualification."
+    ],
+    "code": "",
+    "language": "sql",
+    "pitfalls": [
+      "Assuming schema USAGE also grants SELECT on all tables in that schema.",
+      "Allowing untrusted roles to create objects in a schema included in an application's search_path."
+    ],
+    "followups": [
+      "What happens when two schemas contain a table with the same unqualified name?",
+      "How would you grant a reporting role read access without permission to create tables?"
+    ],
+    "sourceUrl": "https://www.postgresql.org/docs/current/ddl-schemas.html",
+    "provenance": {
+      "kind": "candidate-reported",
+      "url": "https://www.linkedin.com/posts/syed-faizan-jamal-45162b208_fullstackdeveloper-nodejs-reactjs-activity-7506359803397607424-TAOF",
+      "author": "Syed Faizan Jamal",
+      "title": "Full stack interview report",
+      "company": null,
+      "experience": null,
+      "role": "Full Stack Developer",
+      "accessedAt": "2026-11-18",
+      "note": "Self-reported interview experience; not independently verified. Question paraphrased; answer independently written.",
+      "scope": "reported-question"
+    }
+  },
+  {
+    "id": "li-postgres-003",
+    "subject": "postgres",
+    "topic": "Database routines",
+    "subtopic": "Stored procedures and transaction control",
+    "title": "Explain a PostgreSQL stored procedure",
+    "difficulty": "Intermediate",
+    "type": "Concept",
+    "minutes": 8,
+    "prompt": "What is a stored procedure in PostgreSQL?",
+    "answer": [
+      "A stored procedure is a named routine kept in the database and invoked with CALL. Define it with CREATE PROCEDURE, including its parameters, implementation language and body. It can group operations such as validating a staged batch and moving accepted rows into target tables. Unlike a function used in a SELECT expression, a procedure has no RETURNS clause for a function result, although output parameters can deliver values to its caller.",
+      "Transaction control is an important distinction, with restrictions. A procedure may commit or roll back when invoked in a permitted top-level CALL context, but cannot do so when that CALL runs inside an explicit transaction block. Nested calls and other routine attributes can impose additional restrictions. Decide whether the caller or the procedure owns the transaction boundary before designing batch processing; committing partway through a batch changes its recovery and retry behavior."
+    ],
+    "code": "",
+    "language": "sql",
+    "pitfalls": [
+      "Calling a procedure as though it were a scalar function in SELECT.",
+      "Assuming COMMIT inside a procedure is permitted in every calling context.",
+      "Adding intermediate commits without defining how partial batch completion is recovered."
+    ],
+    "followups": [
+      "When would a function be preferable to a procedure?",
+      "What changes if the application wraps CALL inside BEGIN and COMMIT?"
+    ],
+    "sourceUrl": "https://www.postgresql.org/docs/current/xproc.html",
+    "provenance": {
+      "kind": "candidate-reported",
+      "url": "https://www.linkedin.com/posts/syed-faizan-jamal-45162b208_fullstackdeveloper-nodejs-reactjs-activity-7506359803397607424-TAOF",
+      "author": "Syed Faizan Jamal",
+      "title": "Full stack interview report",
+      "company": null,
+      "experience": null,
+      "role": "Full Stack Developer",
+      "accessedAt": "2026-11-18",
+      "note": "Self-reported interview experience; not independently verified. Question paraphrased; answer independently written.",
+      "scope": "reported-question"
+    }
+  },
+  {
+    "id": "li-postgres-004",
+    "subject": "postgres",
+    "topic": "Data correctness",
+    "subtopic": "Verifying writes and committed visibility",
+    "title": "Verify inserted and updated data",
+    "difficulty": "Intermediate",
+    "type": "Scenario",
+    "minutes": 10,
+    "prompt": "How would you verify that an insert or update wrote the correct data to PostgreSQL?",
+    "answer": [
+      "Check the command result and affected-row count, then compare the actual stored values with the intended change using a stable key. INSERT or UPDATE with RETURNING can provide the resulting row, including generated identifiers and default values, without a separate lookup. Verify the fields that matter to the operation instead of treating any successful database response as proof that the correct row and values were selected. An update affecting zero rows deserves an explicit explanation.",
+      "Separate statement success from transaction completion. A query in the writing transaction can see its own changes before they commit, so that read alone does not establish visibility to another client. After a successful commit, verify through a fresh query against the intended database and schema. PostgreSQL's default Read Committed isolation gives each query a snapshot of committed data at query start; an older Repeatable Read transaction can retain an earlier snapshot. Also test rollback and constraint-failure paths."
+    ],
+    "code": "",
+    "language": "sql",
+    "pitfalls": [
+      "Treating RETURNING output as proof that the surrounding transaction has committed.",
+      "Checking another database or schema and misdiagnosing the write as missing.",
+      "Ignoring the verification session's transaction snapshot."
+    ],
+    "followups": [
+      "Why might the writing connection see a row while another connection cannot?",
+      "What should a caller do when an update succeeds but affects zero rows?"
+    ],
+    "sourceUrl": "https://www.postgresql.org/docs/current/dml-returning.html",
+    "provenance": {
+      "kind": "candidate-reported",
+      "url": "https://www.linkedin.com/posts/putul-kumari-9332261a9_java-springboot-javadeveloper-activity-7491438045184057345-0S2S",
+      "author": "Putul kumari",
+      "title": "Java backend first-round report",
+      "company": null,
+      "experience": null,
+      "role": "Java Backend Developer",
+      "accessedAt": "2026-11-18",
+      "note": "Self-reported interview experience; not independently verified. Question paraphrased; answer independently written.",
+      "scope": "reported-question"
+    }
+  },
+  {
+    "id": "li-postgres-005",
+    "subject": "postgres",
+    "topic": "Workload selection",
+    "subtopic": "PostgreSQL and Elasticsearch for log storage",
+    "title": "Choose a store for searchable logs",
+    "difficulty": "Advanced",
+    "type": "Design",
+    "minutes": 12,
+    "prompt": "Why might a team store searchable logs in Elasticsearch rather than PostgreSQL?",
+    "answer": [
+      "Start with ingestion volume, query patterns, retention, latency and operational capacity. PostgreSQL can store logs and supports full-text search, including tsvector data and GIN indexes. Time partitioning can also make retention management practical by removing old partitions. Therefore, lacking text-search capability is not a valid reason to reject PostgreSQL. For a manageable workload needing SQL joins with application data, keeping logs there may reduce the number of systems a team operates.",
+      "Elasticsearch data streams provide a model for append-oriented timestamped events, with backing indices and lifecycle policies for rollover and retention. That can suit a dedicated logging workload and separate log ingestion and search from the application's transactional database. The recommendation should still follow measurements and the team's required search features. Compare ingestion cost, query latency, index size, retention operations and failure recovery under representative traffic, and account for the additional service's monitoring and maintenance."
+    ],
+    "code": "",
+    "language": "sql",
+    "pitfalls": [
+      "Claiming PostgreSQL has no full-text search or cannot store logs.",
+      "Choosing a search service without measuring the actual logging workload.",
+      "Ignoring retention management and the cost of operating another service."
+    ],
+    "followups": [
+      "Which query and ingestion measurements would justify moving logs out of PostgreSQL?",
+      "How would you retain only a fixed period of logs using PostgreSQL partitions?"
+    ],
+    "sourceUrl": "https://www.postgresql.org/docs/current/textsearch-intro.html",
+    "provenance": {
+      "kind": "candidate-reported",
+      "url": "https://www.linkedin.com/posts/siddharth-siddharth-64aa36193_devops-cloudcomputing-database-activity-7468181817670414336-aZMx",
+      "author": "Siddharth Siddharth",
+      "title": "Log storage interview question",
+      "company": null,
+      "experience": null,
+      "role": null,
+      "accessedAt": "2026-11-18",
+      "note": "Self-reported interview experience; not independently verified. Question paraphrased; answer independently written.",
+      "scope": "reported-question"
+    }
+  }
+]

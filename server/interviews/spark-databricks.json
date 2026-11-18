@@ -1,0 +1,816 @@
+[
+  {
+    "id": "li-pyspark-001",
+    "subject": "pyspark",
+    "topic": "Performance optimization",
+    "subtopic": "Large batch execution",
+    "title": "Process 300 million rows efficiently",
+    "difficulty": "Advanced",
+    "type": "Scenario",
+    "minutes": 12,
+    "prompt": "How would you keep a 300-million-row PySpark pipeline readable and fast?",
+    "answer": [
+      "Start with the required output and inspect row width, file layout, key distribution, and available resources; the row count alone cannot determine a cluster configuration. Use DataFrame expressions, select required columns, and apply valid filters early. Review the physical plan for exchanges, repeated scans, and join choices. Preserve necessary aggregations and joins: a wide transformation is justified when the business result requires redistribution.",
+      "Measure a representative run before adding repartitioning or caching. Repartition only to establish useful distribution or restore parallelism, since it costs a shuffle. Cache an expensive intermediate only when reuse can repay materialization and memory costs, then release it. Compare elapsed time, shuffle bytes, spills, and output correctness. Separate transformations into named functions with clear input and output contracts so performance decisions remain understandable."
+    ],
+    "code": "",
+    "language": "python",
+    "pitfalls": [
+      "Row count does not reveal input size or skew.",
+      "Repartitioning and caching every intermediate can increase cost."
+    ],
+    "followups": [
+      "Which stage would you inspect first if most tasks finish quickly but a few run for minutes?",
+      "How would you prove a cached intermediate is reused?"
+    ],
+    "sourceUrl": "https://spark.apache.org/docs/latest/sql-performance-tuning.html",
+    "provenance": {
+      "kind": "candidate-reported",
+      "url": "https://www.linkedin.com/posts/ajay026_dataengineering-pyspark-interviewquestions-activity-7321530279414652928-18b7",
+      "author": "Ajay Kadiyala",
+      "title": "PySpark interview",
+      "company": null,
+      "experience": null,
+      "accessedAt": "2026-11-18",
+      "note": "Self-reported interview experience; not independently verified. Question paraphrased; answer independently written.",
+      "scope": "reported-question"
+    }
+  },
+  {
+    "id": "li-pyspark-002",
+    "subject": "pyspark",
+    "topic": "Joins",
+    "subtopic": "Broadcast join selection",
+    "title": "Explain broadcast joins",
+    "difficulty": "Advanced",
+    "type": "Concept",
+    "minutes": 8,
+    "prompt": "How does a broadcast join work, and when would you choose it? Study assumptions: facts and a small dimension share customer_id.",
+    "answer": [
+      "For a supported join shape, Spark can distribute the smaller build-side relation to executors and join each local partition of the other input against it. This avoids shuffling the large relation on its join key. An explicit broadcast hint communicates that the relation is suitable, but feasibility depends on join semantics, the physical strategy, and the actual materialized size rather than a small-looking row count.",
+      "Project and filter the candidate build side first, inspect statistics, and verify the selected plan. Allow space for the broadcast hash relation alongside task execution and other cached data. A hint is a performance decision, not a correctness change, and should be revisited as data grows. Diagnose timeouts or memory failures before increasing limits. For two genuinely large relations, a shuffle-based strategy can be the more robust choice."
+    ],
+    "code": "from pyspark.sql import functions as F\n\n# Illustrative inputs: facts and a verified small dimension share customer_id.\nresult = facts.join(F.broadcast(dimension), \"customer_id\", \"inner\")\nresult.explain(mode=\"formatted\")",
+    "language": "python",
+    "pitfalls": [
+      "Broadcasting a relation that exceeds executor memory can fail the job.",
+      "A broadcast hint cannot make every join type a broadcast hash join."
+    ],
+    "followups": [
+      "What changes when the dimension grows tenfold?",
+      "How would you verify the build side in the physical plan?"
+    ],
+    "sourceUrl": "https://spark.apache.org/docs/latest/api/python/reference/pyspark.sql/api/pyspark.sql.functions.broadcast.html",
+    "provenance": {
+      "kind": "candidate-reported",
+      "url": "https://www.linkedin.com/posts/ajay026_dataengineering-pyspark-interviewquestions-activity-7321530279414652928-18b7",
+      "author": "Ajay Kadiyala",
+      "title": "PySpark interview",
+      "company": null,
+      "experience": null,
+      "accessedAt": "2026-11-18",
+      "note": "Self-reported interview experience; not independently verified. Question paraphrased; answer independently written.",
+      "scope": "reported-question"
+    }
+  },
+  {
+    "id": "li-pyspark-003",
+    "subject": "pyspark",
+    "topic": "Partitioning",
+    "subtopic": "Coalesce versus repartition",
+    "title": "Choose coalesce or repartition",
+    "difficulty": "Advanced",
+    "type": "Concept",
+    "minutes": 8,
+    "prompt": "Compare coalesce() and repartition() in PySpark.",
+    "answer": [
+      "DataFrame.coalesce reduces the partition count using a narrow dependency, usually avoiding a full shuffle. It does not increase parallelism when asked for more partitions than already exist. Repartition redistributes rows through a shuffle and can increase or decrease the count; supplying columns can establish hash distribution for later work. Neither API guarantees that business keys are evenly distributed when the data itself is skewed.",
+      "Use coalesce for a modest reduction after a selective operation when existing partitions are reasonably balanced. Use repartition when imbalance or insufficient parallelism justifies redistribution. A drastic coalesce can make upstream work run on very few executors, so coalesce(1) is an expensive output convenience at scale. Evaluate task sizes, runtime, and output file counts together, and consider adaptive shuffle partition coalescing before prescribing a fixed count."
+    ],
+    "code": "",
+    "language": "python",
+    "pitfalls": [
+      "coalesce cannot create more useful parallel partitions.",
+      "One output file can serialize a large write."
+    ],
+    "followups": [
+      "When could a shuffle improve overall runtime?",
+      "How does a highly skewed repartitioning key affect task balance?"
+    ],
+    "sourceUrl": "https://spark.apache.org/docs/latest/api/python/reference/pyspark.sql/api/pyspark.sql.DataFrame.coalesce.html",
+    "provenance": {
+      "kind": "candidate-reported",
+      "url": "https://www.linkedin.com/posts/ajay026_dataengineering-pyspark-interviewquestions-activity-7321530279414652928-18b7",
+      "author": "Ajay Kadiyala",
+      "title": "PySpark interview",
+      "company": null,
+      "experience": null,
+      "accessedAt": "2026-11-18",
+      "note": "Self-reported interview experience; not independently verified. Question paraphrased; answer independently written.",
+      "scope": "reported-question"
+    }
+  },
+  {
+    "id": "li-pyspark-004",
+    "subject": "pyspark",
+    "topic": "Observability",
+    "subtopic": "Spark UI and event logs",
+    "title": "Monitor Spark performance",
+    "difficulty": "Advanced",
+    "type": "Scenario",
+    "minutes": 10,
+    "prompt": "How would you monitor and diagnose Spark job performance?",
+    "answer": [
+      "Begin with the SQL execution plan and identify the slowest stage rather than treating total job time as one number. Compare task duration distributions, input sizes, shuffle reads and writes, spills, garbage collection, and executor failures. A few very slow tasks suggest skew or problematic input partitions; many tiny tasks suggest scheduling overhead. Correlate the stage evidence with the transformation that produced it.",
+      "Enable event logging before an application starts so the History Server can reconstruct the UI after completion. Export relevant metrics and retain driver and executor logs with an application identifier. Establish workload baselines and alert on meaningful changes such as failure rate, runtime, or backlog. After changing one suspected bottleneck, rerun comparable data and verify both performance and result correctness; a faster run that skipped input is not an optimization."
+    ],
+    "code": "",
+    "language": "python",
+    "pitfalls": [
+      "The live Spark UI disappears after application termination unless history information is retained.",
+      "Average task duration can hide a small number of severe stragglers."
+    ],
+    "followups": [
+      "Which measurements distinguish skew from cluster-wide memory pressure?",
+      "How would you retain evidence for an intermittent overnight failure?"
+    ],
+    "sourceUrl": "https://spark.apache.org/docs/latest/monitoring.html",
+    "provenance": {
+      "kind": "candidate-reported",
+      "url": "https://www.linkedin.com/posts/ajay026_dataengineering-pyspark-interviewquestions-activity-7321530279414652928-18b7",
+      "author": "Ajay Kadiyala",
+      "title": "PySpark interview",
+      "company": null,
+      "experience": null,
+      "accessedAt": "2026-11-18",
+      "note": "Self-reported interview experience; not independently verified. Question paraphrased; answer independently written.",
+      "scope": "reported-question"
+    }
+  },
+  {
+    "id": "li-pyspark-005",
+    "subject": "pyspark",
+    "topic": "Cost optimization",
+    "subtopic": "Evidence-based optimization narrative",
+    "title": "Explain a compute-cost saving",
+    "difficulty": "Advanced",
+    "type": "Scenario",
+    "minutes": 10,
+    "prompt": "Describe an optimization you made that reduced Spark compute cost.",
+    "answer": [
+      "Use a real example from your own work and explain the original bottleneck, the evidence, the intervention, and the measured result. Do not invent a personal saving. A defensible example could involve reducing repeated computation, changing an unnecessarily expensive execution pattern, or right-sizing resources after profiling. Explain the input volume, service objective, and comparison conditions so the interviewer can assess whether the result is transferable.",
+      "Report total resource use or actual job cost alongside runtime; more executors can finish sooner while costing more. Include storage and maintenance work introduced by the change. Show that output counts, keys, and important business aggregates still reconcile, and discuss the operational tradeoff. Spark workloads can be constrained by CPU, memory, or network, so connect the chosen change to observed behavior rather than naming a configuration as a universal fix."
+    ],
+    "code": "",
+    "language": "python",
+    "pitfalls": [
+      "Claiming a percentage saving without a comparable baseline weakens the answer.",
+      "A shorter runtime is not automatically a lower bill."
+    ],
+    "followups": [
+      "What evidence would show that the improvement survives larger input?",
+      "Which operational or storage costs did the change introduce?"
+    ],
+    "sourceUrl": "https://spark.apache.org/docs/latest/tuning.html",
+    "provenance": {
+      "kind": "candidate-reported",
+      "url": "https://www.linkedin.com/posts/ajay026_dataengineering-pyspark-interviewquestions-activity-7321530279414652928-18b7",
+      "author": "Ajay Kadiyala",
+      "title": "PySpark interview",
+      "company": null,
+      "experience": null,
+      "accessedAt": "2026-11-18",
+      "note": "Self-reported interview experience; not independently verified. Question paraphrased; answer independently written.",
+      "scope": "reported-question"
+    }
+  },
+  {
+    "id": "li-pyspark-006",
+    "subject": "pyspark",
+    "topic": "Python execution",
+    "subtopic": "Native expressions versus UDFs",
+    "title": "Decide whether to use a UDF",
+    "difficulty": "Advanced",
+    "type": "Concept",
+    "minutes": 8,
+    "prompt": "Why might you avoid a Python UDF even when it produces the right result?",
+    "answer": [
+      "Check whether built-in SQL functions, higher-order functions, or expressions can express the transformation clearly. Native expressions give Spark more visibility into the computation and commonly avoid crossing the JVM-to-Python boundary. Traditional scalar Python UDFs can incur serialization and per-row execution overhead. Correctness also depends on declared return types, null handling, and the behavior of external libraries on executors.",
+      "Use a UDF when required logic is unavailable or materially less maintainable as native expressions, then benchmark representative data. Depending on the deployed Spark version, Arrow-optimized or pandas UDFs can reduce transfer overhead, but they do not remove all Python execution costs or memory constraints. Package dependencies consistently and test edge cases separately. Keep side effects out of UDFs because task execution can be retried and is not a reliable once-only callback."
+    ],
+    "code": "",
+    "language": "python",
+    "pitfalls": [
+      "Arrow improves data exchange but does not make arbitrary Python logic free.",
+      "External API calls inside a UDF can repeat on task retry."
+    ],
+    "followups": [
+      "When would a pandas UDF be appropriate?",
+      "How would you test nulls and type coercion before deployment?"
+    ],
+    "sourceUrl": "https://spark.apache.org/docs/latest/api/python/user_guide/udfandudtf.html",
+    "provenance": {
+      "kind": "candidate-reported",
+      "url": "https://www.linkedin.com/posts/ajay026_dataengineering-pyspark-interviewquestions-activity-7321530279414652928-18b7",
+      "author": "Ajay Kadiyala",
+      "title": "PySpark interview",
+      "company": null,
+      "experience": null,
+      "accessedAt": "2026-11-18",
+      "note": "Self-reported interview experience; not independently verified. Question paraphrased; answer independently written.",
+      "scope": "reported-question"
+    }
+  },
+  {
+    "id": "li-pyspark-007",
+    "subject": "pyspark",
+    "topic": "Cluster resources",
+    "subtopic": "Executor sizing",
+    "title": "Reason about cluster resources",
+    "difficulty": "Advanced",
+    "type": "Design",
+    "minutes": 12,
+    "prompt": "Reported topic: Spark cluster configuration and resource calculations. Explain your sizing approach.",
+    "answer": [
+      "Translate the workload into resource constraints before choosing executor counts. Estimate data volume after filtering, shuffle sizes, concurrent tasks, and the largest partition or join build side. Reserve capacity for the operating system and cluster services. On resource managers such as YARN or Kubernetes, an executor request can include JVM heap, memory overhead, configured off-heap memory, and separately configured PySpark memory; counting heap alone underestimates the container request.",
+      "Choose an initial number of executor cores and executors that fits available CPU and memory, then ensure there are enough runnable partitions to use them. Treat this as an experiment, not a fixed formula based on input gigabytes. Inspect spills, garbage collection, Python worker memory, and scheduler utilization. Increase parallelism or reduce per-task working sets before merely enlarging heaps, and account for dynamic allocation and other workloads sharing the cluster."
+    ],
+    "code": "",
+    "language": "python",
+    "pitfalls": [
+      "Executor heap is not the entire memory request.",
+      "A large cluster stays idle if too few partitions are runnable."
+    ],
+    "followups": [
+      "How would Python worker memory affect your calculation?",
+      "What evidence would justify more cores versus more executors?"
+    ],
+    "sourceUrl": "https://spark.apache.org/docs/latest/configuration.html",
+    "provenance": {
+      "kind": "candidate-reported",
+      "url": "https://www.linkedin.com/posts/shashank219_dataengineering-interview-experience-activity-7328291508216918016-uABL",
+      "author": "Shashank Mishra",
+      "title": "Intuit interview",
+      "company": "Intuit",
+      "experience": "7.8 years",
+      "accessedAt": "2026-11-18",
+      "note": "Self-reported interview experience; not independently verified. Question paraphrased; answer independently written.",
+      "scope": "reported-topic"
+    }
+  },
+  {
+    "id": "li-pyspark-008",
+    "subject": "pyspark",
+    "topic": "Architecture",
+    "subtopic": "Driver placement and executors",
+    "title": "Explain architecture and deploy modes",
+    "difficulty": "Advanced",
+    "type": "Concept",
+    "minutes": 10,
+    "prompt": "Reported topics: Spark architecture and deployment modes. Explain the components and driver placement.",
+    "answer": [
+      "The driver runs the application logic, constructs execution plans, and schedules tasks. A cluster manager allocates resources, while executors run tasks and retain application data. A transformation is normally lazy; an action triggers work that Spark divides into stages and tasks. Keep large results distributed because collect() brings records into driver memory and can overwhelm the coordinator even when the executors have ample capacity.",
+      "Client and cluster deployment modes describe where the driver runs, not whether the workload uses one or many machines. In client mode the submitting client hosts the driver; in cluster mode the cluster manager launches it. Driver-to-executor connectivity, dependency distribution, logs, and process lifetime matter operationally. Check support for the chosen cluster manager and language; Spark standalone does not support cluster deployment mode for Python applications. A remote laptop is therefore a fragile production driver."
+    ],
+    "code": "",
+    "language": "python",
+    "pitfalls": [
+      "Deployment mode is distinct from the cluster manager.",
+      "An executor-rich cluster does not protect a driver from collect() memory exhaustion."
+    ],
+    "followups": [
+      "What happens to a client-mode job if its driver process exits?",
+      "How would you distribute Python dependencies?"
+    ],
+    "sourceUrl": "https://spark.apache.org/docs/latest/submitting-applications.html",
+    "provenance": {
+      "kind": "candidate-reported",
+      "url": "https://www.linkedin.com/posts/shashank219_dataengineering-interview-experience-activity-7328291508216918016-uABL",
+      "author": "Shashank Mishra",
+      "title": "Intuit interview",
+      "company": "Intuit",
+      "experience": "7.8 years",
+      "accessedAt": "2026-11-18",
+      "note": "Self-reported interview experience; not independently verified. Question paraphrased; answer independently written.",
+      "scope": "reported-topic"
+    }
+  },
+  {
+    "id": "li-pyspark-009",
+    "subject": "pyspark",
+    "topic": "Data ingestion",
+    "subtopic": "CSV schema and malformed input",
+    "title": "Read CSV with a schema",
+    "difficulty": "Intermediate",
+    "type": "Coding",
+    "minutes": 8,
+    "prompt": "Reported topic: CSV reading. Study assumptions: order_id LONG, amount DECIMAL(18,2); header present.",
+    "answer": [
+      "Define a StructType when the file contract is known so ingestion does not depend on a sample inferring inconsistent types. Configure the delimiter, header, quoting, and multiline behavior to match the producer. An explicit decimal type preserves the intended monetary representation. Limit the input path or glob to the actual CSV files so unrelated objects in the same directory cannot become accidental records.",
+      "Choose failure behavior deliberately. The example fails on malformed records rather than silently accepting them, which is suitable when bad input must stop a load. A production quarantine design could instead use permissive parsing with a corrupt-record field and separate validation. Test column order and header compatibility, missing values, quoted delimiters, and malformed amounts. Validate record counts and required fields after parsing because successful CSV decoding alone does not establish business validity."
+    ],
+    "code": "from pyspark.sql import types as T\n\nschema = T.StructType([\n    T.StructField(\"order_id\", T.LongType(), True),\n    T.StructField(\"amount\", T.DecimalType(18, 2), True),\n])\norders = (spark.read.schema(schema)\n          .option(\"header\", True)\n          .option(\"enforceSchema\", False)\n          .option(\"mode\", \"FAILFAST\")\n          .csv(\"/data/orders/*.csv\"))",
+    "language": "python",
+    "pitfalls": [
+      "Schema inference can infer the wrong production contract.",
+      "A directory read can ingest non-CSV files unless input selection is controlled."
+    ],
+    "followups": [
+      "How would you quarantine malformed rows instead of failing?",
+      "What happens when a producer changes column order?"
+    ],
+    "sourceUrl": "https://spark.apache.org/docs/latest/sql-data-sources-csv.html",
+    "provenance": {
+      "kind": "candidate-reported",
+      "url": "https://www.linkedin.com/posts/poorvasha97_azuredataengineer-dataengineering-azure-activity-7498308041554075648-cfGF",
+      "author": "POORVASHA .",
+      "title": "Tredence interview",
+      "company": "Tredence Inc.",
+      "experience": "6 years",
+      "accessedAt": "2026-11-18",
+      "note": "Self-reported interview experience; not independently verified. Question paraphrased; answer independently written.",
+      "scope": "reported-topic"
+    }
+  },
+  {
+    "id": "li-pyspark-010",
+    "subject": "pyspark",
+    "topic": "Joins",
+    "subtopic": "Filtered employee department join",
+    "title": "Filter employees after joining departments",
+    "difficulty": "Intermediate",
+    "type": "Coding",
+    "minutes": 8,
+    "prompt": "Reported topic: filtered employee/department joins. Study assumptions: join department_id; retain active employees and department_name.",
+    "answer": [
+      "Confirm the required join semantics and the grain of both inputs. Under the study assumptions, filter active employees and use an inner join to retain employees with a matching department. Join by the column name when the key has the same name on both sides, then select the intended output columns. This avoids ambiguous duplicate key columns and makes the result contract visible.",
+      "Check that department_id is unique in the department relation; duplicate dimension keys multiply employee rows. Null join keys do not match under ordinary equality, so decide how unassigned employees should appear. If the requirement changes to retain unmatched employees, use a left join and place department predicates carefully: a post-join filter on a department value can remove null-extended rows. Validate unmatched counts and row multiplicity before tuning the join strategy."
+    ],
+    "code": "from pyspark.sql import functions as F\n\nresult = (employees.filter(F.col(\"active\") == True)\n          .join(departments, \"department_id\", \"inner\")\n          .select(\"employee_id\", \"department_id\", \"department_name\"))",
+    "language": "python",
+    "pitfalls": [
+      "Duplicate department keys create fanout.",
+      "Filtering the right side after a left join can eliminate unmatched rows."
+    ],
+    "followups": [
+      "How would you retain employees without a department?",
+      "How would you detect duplicate department keys?"
+    ],
+    "sourceUrl": "https://spark.apache.org/docs/latest/api/python/reference/pyspark.sql/api/pyspark.sql.DataFrame.join.html",
+    "provenance": {
+      "kind": "candidate-reported",
+      "url": "https://www.linkedin.com/posts/poorvasha97_azuredataengineer-dataengineering-azure-activity-7498308041554075648-cfGF",
+      "author": "POORVASHA .",
+      "title": "Tredence interview",
+      "company": "Tredence Inc.",
+      "experience": "6 years",
+      "accessedAt": "2026-11-18",
+      "note": "Self-reported interview experience; not independently verified. Question paraphrased; answer independently written.",
+      "scope": "reported-topic"
+    }
+  },
+  {
+    "id": "li-pyspark-011",
+    "subject": "pyspark",
+    "topic": "Window functions",
+    "subtopic": "Dense rank with ties",
+    "title": "Find each country's third-highest amount",
+    "difficulty": "Intermediate",
+    "type": "Coding",
+    "minutes": 10,
+    "prompt": "Reported topic: country-wise third-highest orders. Study assumptions: orders(country, amount); third distinct non-null amount, retaining ties.",
+    "answer": [
+      "Clarify whether third highest means the third row, the third distinct amount, or a competition rank. With the stated assumptions, partition a window by country and order non-null amounts descending. dense_rank assigns the same position to equal amounts without leaving gaps, so filtering rank three retains every order tied at the third distinct amount. Countries with fewer than three distinct values produce no result.",
+      "Filter null amounts before ranking and keep the amount type numeric rather than lexicographic text. If the business instead wants exactly one third row, use row_number with an additional stable order identifier; amount alone cannot resolve ties deterministically. For large data, examine skew across countries and the window shuffle and sort costs. Test duplicate amounts, negative values, nulls, and countries containing only one or two distinct amounts."
+    ],
+    "code": "from pyspark.sql import Window, functions as F\n\nwindow = Window.partitionBy(\"country\").orderBy(F.col(\"amount\").desc())\nresult = (orders.filter(F.col(\"amount\").isNotNull())\n          .withColumn(\"amount_rank\", F.dense_rank().over(window))\n          .filter(F.col(\"amount_rank\") == 3)\n          .drop(\"amount_rank\"))",
+    "language": "python",
+    "pitfalls": [
+      "row_number and dense_rank implement different tie policies.",
+      "Ordering numeric amounts stored as strings produces incorrect rankings."
+    ],
+    "followups": [
+      "How would you return exactly one row per country?",
+      "How would you handle one country containing most of the records?"
+    ],
+    "sourceUrl": "https://spark.apache.org/docs/latest/api/python/reference/pyspark.sql/api/pyspark.sql.functions.dense_rank.html",
+    "provenance": {
+      "kind": "candidate-reported",
+      "url": "https://www.linkedin.com/posts/poorvasha97_azuredataengineer-dataengineering-azure-activity-7498308041554075648-cfGF",
+      "author": "POORVASHA .",
+      "title": "Tredence interview",
+      "company": "Tredence Inc.",
+      "experience": "6 years",
+      "accessedAt": "2026-11-18",
+      "note": "Self-reported interview experience; not independently verified. Question paraphrased; answer independently written.",
+      "scope": "reported-topic"
+    }
+  },
+  {
+    "id": "li-pyspark-012",
+    "subject": "pyspark",
+    "topic": "Performance optimization",
+    "subtopic": "Large-input join and AQE",
+    "title": "Optimize two large inputs",
+    "difficulty": "Advanced",
+    "type": "Scenario",
+    "minutes": 12,
+    "prompt": "Reported topic: optimize 30M and 8M records; discuss partitioning, shuffling, caching, skew, and AQE.",
+    "answer": [
+      "Start with bytes, projected columns, key cardinality, and the physical plan; thirty million versus eight million rows does not prove that the second relation is safe to broadcast. Apply valid filters and projections before the join. Validate key uniqueness and intended cardinality so a data fanout is not mistaken for a tuning problem. Compare partition sizes and task durations to identify skew or excessive shuffle.",
+      "Adaptive query execution can use runtime statistics to revise eligible batch plans, coalesce shuffle partitions, and mitigate supported skewed joins. Inspect the executed plan to confirm whether it helped. Address hot keys explicitly if skew remains, and size shuffle work from observed task behavior. Cache only reused intermediates. Benchmark a complete representative run and reconcile results after each change; partition counts and join hints should follow evidence rather than input row counts."
+    ],
+    "code": "",
+    "language": "python",
+    "pitfalls": [
+      "Eight million wide rows may be too large to broadcast.",
+      "AQE does not repair incorrect join cardinality."
+    ],
+    "followups": [
+      "What would you inspect if one key dominates the input?",
+      "When is caching either input worth its materialization cost?"
+    ],
+    "sourceUrl": "https://docs.databricks.com/aws/en/optimizations/aqe",
+    "provenance": {
+      "kind": "candidate-reported",
+      "url": "https://www.linkedin.com/posts/poorvasha97_azuredataengineer-dataengineering-azure-activity-7498308041554075648-cfGF",
+      "author": "POORVASHA .",
+      "title": "Tredence interview",
+      "company": "Tredence Inc.",
+      "experience": "6 years",
+      "accessedAt": "2026-11-18",
+      "note": "Self-reported interview experience; not independently verified. Question paraphrased; answer independently written.",
+      "scope": "reported-topic"
+    }
+  },
+  {
+    "id": "li-databricks-001",
+    "subject": "databricks",
+    "topic": "Incremental ingestion",
+    "subtopic": "Auto Loader from ADLS",
+    "title": "Ingest arriving files continuously",
+    "difficulty": "Advanced",
+    "type": "Design",
+    "minutes": 12,
+    "prompt": "Design near-real-time ingestion for continuously arriving ADLS files.",
+    "answer": [
+      "Use Auto Loader to discover new immutable files and write a raw Bronze Delta table incrementally. Access ADLS through a governed Unity Catalog volume or external location with the required privileges. Set an explicit schema policy and preserve source metadata for traceability. Select a continuous job or frequent triggered processing according to the actual latency objective, startup overhead, and arrival rate rather than assuming a batch schedule is always sufficient.",
+      "With directly managed Structured Streaming, use durable schema and checkpoint locations dedicated to the ingestion workload; managed Lakeflow pipelines can manage these automatically. Monitor backlog, processing duration, parse failures, and end-to-end freshness. Retain source files long enough for recovery and keep business deduplication separate from file-discovery tracking. Test restart behavior and a burst of late files before treating the pipeline as production ready."
+    ],
+    "code": "",
+    "language": "python",
+    "pitfalls": [
+      "File ingestion tracking does not deduplicate repeated business events across different files.",
+      "Latency includes orchestration and compute startup, not only parsing."
+    ],
+    "followups": [
+      "How would you choose continuous execution versus scheduled AvailableNow processing?",
+      "Which metrics reveal that ingestion is falling behind?"
+    ],
+    "sourceUrl": "https://learn.microsoft.com/en-us/azure/databricks/ingestion/cloud-object-storage/onboard-data",
+    "provenance": {
+      "kind": "candidate-reported",
+      "url": "https://www.linkedin.com/posts/sunil-data-engineer_databricks-interview-experience-the-interview-activity-7418187553540878336-QBmi",
+      "author": "Sunil Badugu",
+      "title": "Databricks scenarios",
+      "company": null,
+      "experience": null,
+      "accessedAt": "2026-11-18",
+      "note": "Self-reported interview experience; not independently verified. Question paraphrased; answer independently written.",
+      "scope": "reported-question"
+    }
+  },
+  {
+    "id": "li-databricks-002",
+    "subject": "databricks",
+    "topic": "Schema management",
+    "subtopic": "Auto Loader evolution policy",
+    "title": "Recover from schema drift",
+    "difficulty": "Advanced",
+    "type": "Scenario",
+    "minutes": 10,
+    "prompt": "Columns change from A,B,C to A,B,D. Recover failed ingestion.",
+    "answer": [
+      "First determine whether D is a new business attribute or a rename of C. Automatic additive evolution cannot infer that meaning. Inspect the failing file, saved input schema, parse results, and target schema. For direct Auto Loader inference, addNewColumns can update its stored schema and stop the stream on a new column; restarting resumes with that schema. Check the configured mode because an explicitly supplied schema has different defaults.",
+      "Choose a documented ingestion policy: accept approved additions, rescue unexpected fields for review, or fail on any change. Coordinate the target Delta schema with the input schema instead of assuming reader evolution automatically updates every sink. Preserve raw input, record the change, and map it into a stable Silver contract. If C has disappeared, validate downstream nullability and any required-field checks. Do not delete checkpoints merely to make the error disappear."
+    ],
+    "code": "",
+    "language": "python",
+    "pitfalls": [
+      "A new column is not automatically a semantic rename.",
+      "Reader schema evolution and target table evolution require coordinated policies."
+    ],
+    "followups": [
+      "When would rescue mode be preferable to additive evolution?",
+      "How would you distinguish missing C from a renamed C?"
+    ],
+    "sourceUrl": "https://learn.microsoft.com/en-us/azure/databricks/ingestion/cloud-object-storage/auto-loader/schema",
+    "provenance": {
+      "kind": "candidate-reported",
+      "url": "https://www.linkedin.com/posts/sunil-data-engineer_databricks-interview-experience-the-interview-activity-7418187553540878336-QBmi",
+      "author": "Sunil Badugu",
+      "title": "Databricks scenarios",
+      "company": null,
+      "experience": null,
+      "accessedAt": "2026-11-18",
+      "note": "Self-reported interview experience; not independently verified. Question paraphrased; answer independently written.",
+      "scope": "reported-question"
+    }
+  },
+  {
+    "id": "li-databricks-003",
+    "subject": "databricks",
+    "topic": "Schema management",
+    "subtopic": "Delta column rename and historical values",
+    "title": "Migrate a renamed column",
+    "difficulty": "Advanced",
+    "type": "Scenario",
+    "minutes": 10,
+    "prompt": "Migrate C to D while preserving historical values.",
+    "answer": [
+      "Confirm that C and D have identical business meaning and compatible types. If the existing Delta table contains only C, a metadata rename with column mapping can expose historical values as D without rewriting all files, subject to protocol and runtime compatibility. Review downstream readers and stop or coordinate active writers before changing the contract. A source file rename alone does not rename the existing table column.",
+      "If prior ingestion already created separate C and D columns, metadata rename is insufficient because D exists and values may be split across both. Define a precedence and conflict policy, build a validated canonical D projection or replacement table, and reconcile historical counts and values before switching consumers. Review change data feed and streaming-reader compatibility; non-additive changes can require schema tracking and coordinated restarts. Retain a rollback path until the new contract is verified."
+    ],
+    "code": "",
+    "language": "python",
+    "pitfalls": [
+      "Adding D and dropping C can discard historical values.",
+      "Column mapping and non-additive changes can affect streaming and legacy readers."
+    ],
+    "followups": [
+      "What if both C and D are populated with conflicting values?",
+      "How would you migrate downstream streaming readers?"
+    ],
+    "sourceUrl": "https://learn.microsoft.com/en-us/azure/databricks/tables/features/column-mapping",
+    "provenance": {
+      "kind": "candidate-reported",
+      "url": "https://www.linkedin.com/posts/sunil-data-engineer_databricks-interview-experience-the-interview-activity-7418187553540878336-QBmi",
+      "author": "Sunil Badugu",
+      "title": "Databricks scenarios",
+      "company": null,
+      "experience": null,
+      "accessedAt": "2026-11-18",
+      "note": "Self-reported interview experience; not independently verified. Question paraphrased; answer independently written.",
+      "scope": "reported-question"
+    }
+  },
+  {
+    "id": "li-databricks-004",
+    "subject": "databricks",
+    "topic": "Lakehouse design",
+    "subtopic": "Stable Silver contracts",
+    "title": "Keep Silver stable during drift",
+    "difficulty": "Advanced",
+    "type": "Design",
+    "minutes": 12,
+    "prompt": "Keep Silver stable despite frequent source schema changes.",
+    "answer": [
+      "Keep Bronze sufficiently faithful to the source for replay, including source identifiers and ingestion metadata. Define Silver as an explicit business contract with named columns, types, keys, and quality expectations. Parse and map each supported source version into that contract rather than forwarding SELECT * into consumer tables. Preserve unexpected attributes in raw or rescued payloads while the schema owner decides how to represent them.",
+      "Distinguish compatible additions from breaking changes such as a renamed identifier or a changed unit. Version transformation logic, quarantine invalid records, and monitor rejected or newly rescued fields. Promote approved contract changes deliberately and provide migration paths to consumers. Make replay idempotent through business keys or event identity, and test old and new source versions together. Medallion layers describe progressive quality; their names alone do not enforce a stable schema."
+    ],
+    "code": "",
+    "language": "python",
+    "pitfalls": [
+      "Passing every Bronze addition directly to Silver couples consumers to producer drift.",
+      "Silently casting invalid values to null can hide a breaking source change."
+    ],
+    "followups": [
+      "How would you introduce a breaking Silver contract change?",
+      "What metadata would support deterministic replay?"
+    ],
+    "sourceUrl": "https://learn.microsoft.com/en-us/azure/databricks/lakehouse/medallion",
+    "provenance": {
+      "kind": "candidate-reported",
+      "url": "https://www.linkedin.com/posts/sunil-data-engineer_databricks-interview-experience-the-interview-activity-7418187553540878336-QBmi",
+      "author": "Sunil Badugu",
+      "title": "Databricks scenarios",
+      "company": null,
+      "experience": null,
+      "accessedAt": "2026-11-18",
+      "note": "Self-reported interview experience; not independently verified. Question paraphrased; answer independently written.",
+      "scope": "reported-question"
+    }
+  },
+  {
+    "id": "li-databricks-005",
+    "subject": "databricks",
+    "topic": "File processing",
+    "subtopic": "Ordering guarantees and manifests",
+    "title": "Process files in arrival order",
+    "difficulty": "Advanced",
+    "type": "Design",
+    "minutes": 12,
+    "prompt": "Process three undated ADLS files in arrival order.",
+    "answer": [
+      "Ask what arrival means and where that order was recorded. Auto Loader does not guarantee file discovery or processing order, and object-store listing order is not an arrival contract. If no trusted sequence, event timestamp, or manifest was captured for the existing files, exact historical arrival order cannot be reconstructed reliably. Modification times can be a documented approximation only when the producer's behavior makes them meaningful.",
+      "For future files, have the producer or an ingestion service persist a durable manifest with a sequence and immutable file identity. Process one claimed sequence at a time when strict serial side effects are required, track completion transactionally, and make retries idempotent. Handle missing sequence numbers and duplicate notifications explicitly. If only final record correctness matters, a better scalable design often ingests files independently and applies records using their source sequence."
+    ],
+    "code": "",
+    "language": "python",
+    "pitfalls": [
+      "Limiting a micro-batch to one file does not establish chronological discovery.",
+      "No code can recover an ordering fact that was never recorded."
+    ],
+    "followups": [
+      "How would you handle a missing manifest sequence?",
+      "Can the business requirement be met using record-level ordering instead?"
+    ],
+    "sourceUrl": "https://learn.microsoft.com/en-us/azure/databricks/ingestion/cloud-object-storage/auto-loader/",
+    "provenance": {
+      "kind": "candidate-reported",
+      "url": "https://www.linkedin.com/posts/sunil-data-engineer_databricks-interview-experience-the-interview-activity-7418187553540878336-QBmi",
+      "author": "Sunil Badugu",
+      "title": "Databricks scenarios",
+      "company": null,
+      "experience": null,
+      "accessedAt": "2026-11-18",
+      "note": "Self-reported interview experience; not independently verified. Question paraphrased; answer independently written.",
+      "scope": "reported-question"
+    }
+  },
+  {
+    "id": "li-databricks-006",
+    "subject": "databricks",
+    "topic": "Streaming reliability",
+    "subtopic": "Checkpoint-based recovery",
+    "title": "Recover an overnight ingestion failure",
+    "difficulty": "Advanced",
+    "type": "Scenario",
+    "minutes": 10,
+    "prompt": "Recover pending data after an overnight Auto Loader failure.",
+    "answer": [
+      "Determine whether the failure affected the source, schema handling, compute, or sink before restarting. With retained source files, a durable intact checkpoint, and a compatible query, restart using the same checkpoint so Structured Streaming can recover recorded progress. Files that arrived while compute was down remain candidates for later discovery. Delta sink transactions and streaming progress tracking support recovery without treating every restart as a brand-new ingestion.",
+      "Do not delete or repoint the checkpoint as a routine fix; that starts a fresh query and can reprocess input. Confirm schema or code changes are compatible with checkpoint recovery, then monitor the backlog until freshness recovers. Custom foreachBatch side effects need explicit idempotency because a batch can be retried. Retain source data and checkpoint state according to the recovery objective, and reconcile committed output before declaring the incident resolved."
+    ],
+    "code": "",
+    "language": "python",
+    "pitfalls": [
+      "A fresh checkpoint can replay old files and duplicate non-idempotent writes.",
+      "External foreachBatch side effects are not automatically exactly once."
+    ],
+    "followups": [
+      "What changes are unsafe with an existing stateful checkpoint?",
+      "How would you recover if the source deleted unprocessed files?"
+    ],
+    "sourceUrl": "https://learn.microsoft.com/en-us/azure/databricks/structured-streaming/checkpoints",
+    "provenance": {
+      "kind": "candidate-reported",
+      "url": "https://www.linkedin.com/posts/sunil-data-engineer_databricks-interview-experience-the-interview-activity-7418187553540878336-QBmi",
+      "author": "Sunil Badugu",
+      "title": "Databricks scenarios",
+      "company": null,
+      "experience": null,
+      "accessedAt": "2026-11-18",
+      "note": "Self-reported interview experience; not independently verified. Question paraphrased; answer independently written.",
+      "scope": "reported-question"
+    }
+  },
+  {
+    "id": "li-databricks-007",
+    "subject": "databricks",
+    "topic": "Dimensional history",
+    "subtopic": "Scaling SCD Type 2",
+    "title": "Optimize a growing SCD2 table",
+    "difficulty": "Advanced",
+    "type": "Scenario",
+    "minutes": 12,
+    "prompt": "Optimize an SCD2 dimension adding millions of rows daily.",
+    "answer": [
+      "Identify whether the bottleneck is version ingestion, current-state lookup, or historical as-of access. Keep business keys, version ordering, validity intervals, and current flags consistent. Apply only genuine attribute changes so unchanged source snapshots do not create needless history. Deduplicate and order each incoming change set before MERGE, because multiple source rows attempting to update one target row can be ambiguous and may require sequential change processing.",
+      "Use match conditions that narrow the target safely, and choose table layout from actual filter and join patterns rather than partitioning by a high-cardinality business key. Inspect scanned files, rewrite volume, and file sizes. Consider a maintained current-state projection for frequent current-only queries while preserving full history for as-of analysis. Test late events and retries carefully: an optimization that skips older versions must not invalidate historical intervals or create multiple current rows."
+    ],
+    "code": "",
+    "language": "python",
+    "pitfalls": [
+      "Creating a new version for an unchanged snapshot inflates history unnecessarily.",
+      "Selecting only the latest incoming change can lose intermediate SCD2 history."
+    ],
+    "followups": [
+      "How would you incorporate a late change inside an existing validity interval?",
+      "What assertions detect overlapping or duplicate current versions?"
+    ],
+    "sourceUrl": "https://learn.microsoft.com/en-us/azure/databricks/delta/merge",
+    "provenance": {
+      "kind": "candidate-reported",
+      "url": "https://www.linkedin.com/posts/sunil-data-engineer_databricks-interview-experience-the-interview-activity-7418187553540878336-QBmi",
+      "author": "Sunil Badugu",
+      "title": "Databricks scenarios",
+      "company": null,
+      "experience": null,
+      "accessedAt": "2026-11-18",
+      "note": "Self-reported interview experience; not independently verified. Question paraphrased; answer independently written.",
+      "scope": "reported-question"
+    }
+  },
+  {
+    "id": "li-databricks-008",
+    "subject": "databricks",
+    "topic": "Delta performance",
+    "subtopic": "Query regression diagnosis",
+    "title": "Investigate a slower Delta query",
+    "difficulty": "Advanced",
+    "type": "Scenario",
+    "minutes": 10,
+    "prompt": "Diagnose a Delta query slowing from two seconds to twenty.",
+    "answer": [
+      "Compare the same query, data scope, compute configuration, and cache conditions before assigning a cause. Inspect the executed plan, scanned files and bytes, task distribution, and any new shuffle or spill. Data growth, skew, small-file proliferation, changed filters, stale estimates, or resource contention can each explain a regression. Distinguish time spent waiting for compute from time spent executing the query.",
+      "If excessive small-file reads are the evidence, evaluate OPTIMIZE or the appropriate managed maintenance feature. If file skipping deteriorated, inspect layout and relevant statistics. Check whether liquid clustering, partitioning, or an existing maintenance strategy applies before prescribing a rewrite. Measure maintenance cost as well as query benefit, and test representative filters after the change. VACUUM removes unreferenced files according to retention; it is not a general compaction fix."
+    ],
+    "code": "",
+    "language": "python",
+    "pitfalls": [
+      "Warm-cache and cold-cache timings are not comparable baselines.",
+      "VACUUM is not a replacement for file compaction."
+    ],
+    "followups": [
+      "Which evidence would distinguish small-file overhead from data skew?",
+      "How would you evaluate maintenance cost against query savings?"
+    ],
+    "sourceUrl": "https://learn.microsoft.com/en-us/azure/databricks/tables/operations/optimize",
+    "provenance": {
+      "kind": "candidate-reported",
+      "url": "https://www.linkedin.com/posts/sunil-data-engineer_databricks-interview-experience-the-interview-activity-7418187553540878336-QBmi",
+      "author": "Sunil Badugu",
+      "title": "Databricks scenarios",
+      "company": null,
+      "experience": null,
+      "accessedAt": "2026-11-18",
+      "note": "Self-reported interview experience; not independently verified. Question paraphrased; answer independently written.",
+      "scope": "reported-question"
+    }
+  },
+  {
+    "id": "li-databricks-009",
+    "subject": "databricks",
+    "topic": "Delta performance",
+    "subtopic": "Z-ordering and clustering tradeoffs",
+    "title": "Choose a Z-ordering schedule",
+    "difficulty": "Advanced",
+    "type": "Scenario",
+    "minutes": 10,
+    "prompt": "When should Z-ordering run on a large Delta table?",
+    "answer": [
+      "For a Delta table without liquid clustering, Z-ordering can colocate values of a small set of frequently filtered columns so file-level statistics can skip more irrelevant files. Choose columns from selective query predicates and ensure statistics exist for them. A larger table alone is not enough justification: broad scans that read nearly every row gain little from improved skipping, and too many clustering columns dilute locality.",
+      "Schedule maintenance according to ingestion volume, layout degradation, query frequency, and measured benefit rather than after every small load. Rewriting files has compute and I/O costs. Current Databricks guidance favors liquid clustering for suitable tables; it is incompatible with Z-ordering, so first identify the table's layout strategy. Compare scanned bytes and end-to-end query cost before and after maintenance, keeping data scope and compute conditions comparable."
+    ],
+    "code": "",
+    "language": "python",
+    "pitfalls": [
+      "Z-ordering without statistics on the chosen columns cannot support the intended skipping.",
+      "Do not combine Z-ordering with liquid clustering."
+    ],
+    "followups": [
+      "Which workload would gain little from Z-ordering?",
+      "How would you decide that a table needs maintenance again?"
+    ],
+    "sourceUrl": "https://learn.microsoft.com/en-us/azure/databricks/tables/data-skipping",
+    "provenance": {
+      "kind": "candidate-reported",
+      "url": "https://www.linkedin.com/posts/sunil-data-engineer_databricks-interview-experience-the-interview-activity-7418187553540878336-QBmi",
+      "author": "Sunil Badugu",
+      "title": "Databricks scenarios",
+      "company": null,
+      "experience": null,
+      "accessedAt": "2026-11-18",
+      "note": "Self-reported interview experience; not independently verified. Question paraphrased; answer independently written.",
+      "scope": "reported-question"
+    }
+  },
+  {
+    "id": "li-databricks-010",
+    "subject": "databricks",
+    "topic": "Governance",
+    "subtopic": "PII access enforcement",
+    "title": "Protect a table containing PII",
+    "difficulty": "Advanced",
+    "type": "Design",
+    "minutes": 12,
+    "prompt": "Secure a Databricks table containing PII.",
+    "answer": [
+      "Classify the sensitive columns and define which identities need raw values, masked values, or no access. Govern the table in Unity Catalog, grant least-privilege access to groups and service identities, and restrict direct cloud-storage access so users cannot bypass table controls. Use row filters when access depends on record ownership or region and column masks when selected users should see redacted values.",
+      "For consistent policy across many tables, evaluate tag-based ABAC policies rather than manually duplicating controls everywhere. Treat exported data, notebooks, logs, and downstream copies as separate exposure paths. Verify policy behavior using representative authorized and unauthorized identities, including service principals running jobs. Review administrative privileges and audit access regularly. Query-time masking controls what a user sees; it does not erase the underlying PII or replace storage-level protections."
+    ],
+    "code": "",
+    "language": "python",
+    "pitfalls": [
+      "Broad direct storage access can bypass governance enforced through tables.",
+      "Masking does not remove PII from underlying files or existing exports."
+    ],
+    "followups": [
+      "How would you apply a consistent mask across many tables?",
+      "How would you test a pipeline service principal's access?"
+    ],
+    "sourceUrl": "https://learn.microsoft.com/en-us/azure/databricks/data-governance/unity-catalog/filters-and-masks/",
+    "provenance": {
+      "kind": "candidate-reported",
+      "url": "https://www.linkedin.com/posts/sunil-data-engineer_databricks-interview-experience-the-interview-activity-7418187553540878336-QBmi",
+      "author": "Sunil Badugu",
+      "title": "Databricks scenarios",
+      "company": null,
+      "experience": null,
+      "accessedAt": "2026-11-18",
+      "note": "Self-reported interview experience; not independently verified. Question paraphrased; answer independently written.",
+      "scope": "reported-question"
+    }
+  }
+]

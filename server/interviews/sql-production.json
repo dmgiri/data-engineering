@@ -1,0 +1,572 @@
+[
+  {
+    "id": "li-sql-d001",
+    "subject": "sql",
+    "topic": "Data reconciliation",
+    "subtopic": "Large-table differences",
+    "title": "Compare large table contents",
+    "difficulty": "Advanced",
+    "type": "Coding",
+    "minutes": 12,
+    "prompt": "Compare two large tables for mismatched rows.",
+    "answer": [
+      "Define the comparison columns, key uniqueness and whether duplicate multiplicities matter. In PostgreSQL, EXCEPT ALL can identify rows present more often on one side; run it in both directions to detect additions, removals and changed values. Plain EXCEPT removes duplicates and therefore answers a different question. Match compatible types and consistent data boundaries before comparing, rather than treating different snapshots as corruption.",
+      "For very large inputs, compare bounded key ranges and reconcile counts before examining detailed differences. Use a consistent snapshot or a recorded extraction boundary when writers remain active. Hashes can help locate suspicious partitions, but a hash match is not a mathematical guarantee of identical content. Confirm mismatches against actual values and account for null semantics, numeric precision and time-zone normalization."
+    ],
+    "code": "-- PostgreSQL study assumptions: two comparable snapshots(id, amount).\nWITH source_only AS (\n  SELECT id, amount FROM source_snapshot\n  EXCEPT ALL SELECT id, amount FROM target_snapshot\n), target_only AS (\n  SELECT id, amount FROM target_snapshot\n  EXCEPT ALL SELECT id, amount FROM source_snapshot\n)\nSELECT 'source_only' AS side, * FROM source_only\nUNION ALL\nSELECT 'target_only' AS side, * FROM target_only;",
+    "language": "sql",
+    "pitfalls": [
+      "Using EXCEPT instead of EXCEPT ALL hides duplicate-count differences.",
+      "Comparing changing tables without a consistent boundary creates misleading discrepancies."
+    ],
+    "followups": [
+      "What evidence would you use to validate this approach?",
+      "Which failure or concurrency case would change your design?"
+    ],
+    "sourceUrl": "https://www.postgresql.org/docs/current/queries-union.html",
+    "provenance": {
+      "kind": "candidate-reported",
+      "url": "https://www.linkedin.com/posts/isha90_sql-dataanalyst-businessanalyst-activity-7412490615801909250-8n_U",
+      "author": "Isha Rajput",
+      "title": "Self-reported SQL interview questions",
+      "company": null,
+      "experience": null,
+      "role": null,
+      "accessedAt": "2026-11-18",
+      "scope": "reported-question",
+      "note": "Self-reported question list; employer and interview context not stated. Not independently verified. Question paraphrased; answer and study examples independently written."
+    }
+  },
+  {
+    "id": "li-sql-d002",
+    "subject": "sql",
+    "topic": "Production changes",
+    "subtopic": "Bounded concurrent updates",
+    "title": "Update a large table safely",
+    "difficulty": "Advanced",
+    "type": "Scenario",
+    "minutes": 12,
+    "prompt": "Update millions of rows without blocking production.",
+    "answer": [
+      "No ordinary PostgreSQL UPDATE is completely lock-free: it locks affected rows and creates new row versions. Reduce disruption with small committed batches selected by a stable key, an appropriate predicate index and a maintenance window or rate limit. Make the transformation idempotent so a retried batch does not apply the change twice. Inspect blocking sessions, WAL growth and replication delay while it runs.",
+      "The study example updates a bounded set of unlocked rows. SKIP LOCKED helps independent workers avoid waiting on the same rows, but it can omit rows held by another transaction, so a final reconciliation and later pass are essential. Choose batch size from measured latency and resource use rather than a universal number. A migration involving every row may be better served by rebuilding and swapping a validated replacement under an explicit cutover plan."
+    ],
+    "code": "-- PostgreSQL study assumptions: events(id primary key, archived boolean).\n-- One illustrative batch, not a complete production migration.\nWITH batch AS (\n  SELECT id FROM events WHERE archived = false\n  ORDER BY id LIMIT 1000 FOR UPDATE SKIP LOCKED\n)\nUPDATE events AS e SET archived = true\nFROM batch AS b WHERE e.id = b.id;",
+    "language": "sql",
+    "pitfalls": [
+      "Small batches reduce lock duration; they do not eliminate locks.",
+      "A zero-row SKIP LOCKED batch does not prove all eligible rows are processed."
+    ],
+    "followups": [
+      "What evidence would you use to validate this approach?",
+      "Which failure or concurrency case would change your design?"
+    ],
+    "sourceUrl": "https://www.postgresql.org/docs/current/sql-update.html",
+    "provenance": {
+      "kind": "candidate-reported",
+      "url": "https://www.linkedin.com/posts/isha90_sql-dataanalyst-businessanalyst-activity-7412490615801909250-8n_U",
+      "author": "Isha Rajput",
+      "title": "Self-reported SQL interview questions",
+      "company": null,
+      "experience": null,
+      "role": null,
+      "accessedAt": "2026-11-18",
+      "scope": "reported-question",
+      "note": "Self-reported question list; employer and interview context not stated. Not independently verified. Question paraphrased; answer and study examples independently written."
+    }
+  },
+  {
+    "id": "li-sql-d003",
+    "subject": "sql",
+    "topic": "Null handling",
+    "subtopic": "Portable and engine-specific replacement",
+    "title": "Compare COALESCE and ISNULL",
+    "difficulty": "Advanced",
+    "type": "Concept",
+    "minutes": 8,
+    "prompt": "Compare COALESCE with SQL Server ISNULL.",
+    "answer": [
+      "COALESCE returns the first non-null argument from a list and is available in PostgreSQL and many other SQL implementations. SQL Server ISNULL accepts a value and one replacement; it is not PostgreSQL syntax. Neither expression tests whether a value is null in a WHERE predicate: use IS NULL for that purpose. Decide whether a missing value should be replaced at all before substituting a business default.",
+      "Data-type rules matter as much as the returned value. SQL Server normally gives ISNULL the first argument’s type, and converting the replacement to that type can truncate a string. COALESCE follows its engine’s common-result type rules and accepts multiple alternatives. Use explicit casts when the output contract requires a particular type or length. Also distinguish an empty string from null; replacing one does not automatically normalize the other."
+    ],
+    "code": "-- PostgreSQL study example; explicit common text type.\nSELECT COALESCE(NULL::text, NULL::text, 'unknown'::text);\n-- SQL Server has a separate function:\n-- SELECT ISNULL(CAST(NULL AS varchar(20)), 'unknown');",
+    "language": "sql",
+    "pitfalls": [
+      "ISNULL is not portable PostgreSQL syntax.",
+      "An implicit replacement conversion can truncate values in SQL Server."
+    ],
+    "followups": [
+      "What evidence would you use to validate this approach?",
+      "Which failure or concurrency case would change your design?"
+    ],
+    "sourceUrl": "https://learn.microsoft.com/en-us/sql/t-sql/functions/isnull-transact-sql",
+    "provenance": {
+      "kind": "candidate-reported",
+      "url": "https://www.linkedin.com/posts/isha90_sql-dataanalyst-businessanalyst-activity-7412490615801909250-8n_U",
+      "author": "Isha Rajput",
+      "title": "Self-reported SQL interview questions",
+      "company": null,
+      "experience": null,
+      "role": null,
+      "accessedAt": "2026-11-18",
+      "scope": "reported-question",
+      "note": "Self-reported question list; employer and interview context not stated. Not independently verified. Question paraphrased; answer and study examples independently written."
+    }
+  },
+  {
+    "id": "li-sql-d004",
+    "subject": "sql",
+    "topic": "Data lifecycle",
+    "subtopic": "Retention deletion and partition removal",
+    "title": "Purge old records at scale",
+    "difficulty": "Advanced",
+    "type": "Scenario",
+    "minutes": 12,
+    "prompt": "Remove records older than a year from a large table.",
+    "answer": [
+      "Agree on a fixed cutoff, time zone and retention policy before deleting anything. For an existing PostgreSQL heap, delete bounded batches using an indexed time predicate and a stable key, commit between batches and monitor WAL, locks and replica lag. Record progress so retries resume safely. Deletion does not necessarily return the corresponding disk space to the operating system immediately; routine vacuum and storage planning still matter.",
+      "When time-based retention is a durable requirement, partitioning by that time boundary can make future expiry a partition lifecycle operation instead of millions of row deletes. Only remove a partition if every row is eligible and no legal hold, dependent reader or recovery policy needs it. Detaching or dropping partitions still involves locking and operational coordination. Validate remaining counts and boundary rows, and retain a tested recovery path before the irreversible purge."
+    ],
+    "code": "-- PostgreSQL study assumptions: events(id primary key, event_at timestamptz).\n-- The fixed cutoff is an illustrative policy input.\nWITH old AS (\n  SELECT id FROM events\n  WHERE event_at < TIMESTAMPTZ '2025-11-18 00:00:00+00'\n  ORDER BY event_at, id LIMIT 1000\n)\nDELETE FROM events AS e USING old WHERE e.id = old.id;",
+    "language": "sql",
+    "pitfalls": [
+      "Recomputing a moving cutoff during a long purge complicates verification.",
+      "Row deletion and immediate physical disk reclamation are different operations."
+    ],
+    "followups": [
+      "What evidence would you use to validate this approach?",
+      "Which failure or concurrency case would change your design?"
+    ],
+    "sourceUrl": "https://www.postgresql.org/docs/current/sql-delete.html",
+    "provenance": {
+      "kind": "candidate-reported",
+      "url": "https://www.linkedin.com/posts/isha90_sql-dataanalyst-businessanalyst-activity-7412490615801909250-8n_U",
+      "author": "Isha Rajput",
+      "title": "Self-reported SQL interview questions",
+      "company": null,
+      "experience": null,
+      "role": null,
+      "accessedAt": "2026-11-18",
+      "scope": "reported-question",
+      "note": "Self-reported question list; employer and interview context not stated. Not independently verified. Question paraphrased; answer and study examples independently written."
+    }
+  },
+  {
+    "id": "li-sql-d005",
+    "subject": "sql",
+    "topic": "Transactions",
+    "subtopic": "Correctness under high throughput",
+    "title": "Preserve ACID at high throughput",
+    "difficulty": "Advanced",
+    "type": "Design",
+    "minutes": 12,
+    "prompt": "Preserve ACID in a high-throughput OLTP workload.",
+    "answer": [
+      "Use transactions to publish related changes atomically, and enforce row-level invariants with database constraints rather than hoping every caller validates them. Choose isolation from the business invariant, not solely from throughput. PostgreSQL Read Committed provides a fresh statement snapshot but does not prevent every multi-statement anomaly. Serializable execution can reject unsafe concurrent histories; the application must retry the whole transaction when a serialization failure occurs.",
+      "Keep transactions short, lock shared resources in a consistent order and avoid remote service calls while holding database locks. Use bounded retries with idempotent request identifiers so a lost commit response does not duplicate the business operation. Durability depends on the configured logging and replication guarantees; reducing durability settings changes the failure contract. Benchmark successful committed work under contention, including retries, rather than counting submitted requests as completed transactions."
+    ],
+    "code": "",
+    "language": "sql",
+    "pitfalls": [
+      "Read Committed is not a guarantee against every application-level race.",
+      "A serialization retry must rerun the whole transaction, not just the failed statement."
+    ],
+    "followups": [
+      "What evidence would you use to validate this approach?",
+      "Which failure or concurrency case would change your design?"
+    ],
+    "sourceUrl": "https://www.postgresql.org/docs/current/transaction-iso.html",
+    "provenance": {
+      "kind": "candidate-reported",
+      "url": "https://www.linkedin.com/posts/isha90_sql-dataanalyst-businessanalyst-activity-7412490615801909250-8n_U",
+      "author": "Isha Rajput",
+      "title": "Self-reported SQL interview questions",
+      "company": null,
+      "experience": null,
+      "role": null,
+      "accessedAt": "2026-11-18",
+      "scope": "reported-question",
+      "note": "Self-reported question list; employer and interview context not stated. Not independently verified. Question paraphrased; answer and study examples independently written."
+    }
+  },
+  {
+    "id": "li-sql-d006",
+    "subject": "sql",
+    "topic": "Semi-structured data",
+    "subtopic": "JSONB query and index strategy",
+    "title": "Query relational JSON efficiently",
+    "difficulty": "Advanced",
+    "type": "Design",
+    "minutes": 12,
+    "prompt": "Store and query JSON efficiently in a relational database.",
+    "answer": [
+      "In a PostgreSQL study implementation, use typed relational columns for stable keys and frequently constrained business attributes, with jsonb for flexible document content when appropriate. jsonb stores a decomposed representation that supports operators and indexing, but it does not preserve every textual detail of the input JSON. Decide whether the original raw payload also needs retention for audit or replay.",
+      "Choose indexes from the exact predicates. A GIN index can support selected jsonb existence or containment operations; an expression index can be better for a frequently filtered scalar field. An index on the whole document does not automatically accelerate every expression applied to a nested value. Validate the execution plan and measure write overhead and index size. Missing fields, JSON null and SQL null are distinct cases and should have explicit transformation rules."
+    ],
+    "code": "-- PostgreSQL study assumptions: event_docs(id bigint, payload jsonb).\nCREATE INDEX event_docs_payload_gin ON event_docs USING gin (payload);\nSELECT id FROM event_docs WHERE payload @> '{\"status\":\"paid\"}'::jsonb;",
+    "language": "sql",
+    "pitfalls": [
+      "JSON null and SQL NULL are not interchangeable.",
+      "Every JSON expression is not automatically accelerated by one whole-document index."
+    ],
+    "followups": [
+      "What evidence would you use to validate this approach?",
+      "Which failure or concurrency case would change your design?"
+    ],
+    "sourceUrl": "https://www.postgresql.org/docs/current/datatype-json.html",
+    "provenance": {
+      "kind": "candidate-reported",
+      "url": "https://www.linkedin.com/posts/isha90_sql-dataanalyst-businessanalyst-activity-7412490615801909250-8n_U",
+      "author": "Isha Rajput",
+      "title": "Self-reported SQL interview questions",
+      "company": null,
+      "experience": null,
+      "role": null,
+      "accessedAt": "2026-11-18",
+      "scope": "reported-question",
+      "note": "Self-reported question list; employer and interview context not stated. Not independently verified. Question paraphrased; answer and study examples independently written."
+    }
+  },
+  {
+    "id": "li-sql-d008",
+    "subject": "sql",
+    "topic": "Window functions",
+    "subtopic": "ROWS and RANGE peer behavior",
+    "title": "Explain window frame boundaries",
+    "difficulty": "Advanced",
+    "type": "Concept",
+    "minutes": 8,
+    "prompt": "Explain analytical window frames and their differences.",
+    "answer": [
+      "A window partition chooses the relevant group; the frame selects a subset of that partition for frame-sensitive calculations. ROWS describes positions in the ordered row sequence, while RANGE uses ordering values and peers. In PostgreSQL, an ordered default frame includes peers tied with the current ordering value, so a running sum can advance by an entire tied group rather than one row at a time.",
+      "Write the intended frame explicitly and establish deterministic ordering when the result depends on row position. A unique tie-breaker can make a ROWS running total reproducible, but adding it to a RANGE ordering changes which rows are peers. Ranking functions and frame-sensitive aggregates do not use frames in the same way, so changing a frame is not a universal fix. Test tied ordering values, first and last rows, and the distinction between a preceding row count and a preceding time interval."
+    ],
+    "code": "-- PostgreSQL study assumptions: sales(id primary key, day date, amount numeric).\nSELECT id, day, amount,\n       SUM(amount) OVER (\n         ORDER BY day, id ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW\n       ) AS row_total,\n       SUM(amount) OVER (\n         ORDER BY day RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW\n       ) AS day_peer_total\nFROM sales;",
+    "language": "sql",
+    "pitfalls": [
+      "A row-count frame is not the same as a calendar-time window.",
+      "Adding a tie-breaker changes peer groups for RANGE."
+    ],
+    "followups": [
+      "What evidence would you use to validate this approach?",
+      "Which failure or concurrency case would change your design?"
+    ],
+    "sourceUrl": "https://www.postgresql.org/docs/current/tutorial-window.html",
+    "provenance": {
+      "kind": "candidate-reported",
+      "url": "https://www.linkedin.com/posts/isha90_sql-dataanalyst-businessanalyst-activity-7412490615801909250-8n_U",
+      "author": "Isha Rajput",
+      "title": "Self-reported SQL interview questions",
+      "company": null,
+      "experience": null,
+      "role": null,
+      "accessedAt": "2026-11-18",
+      "scope": "reported-question",
+      "note": "Self-reported question list; employer and interview context not stated. Not independently verified. Question paraphrased; answer and study examples independently written."
+    }
+  },
+  {
+    "id": "li-sql-d009",
+    "subject": "sql",
+    "topic": "Analytical modeling",
+    "subtopic": "Freshness-aware relational serving",
+    "title": "Model a real-time analytics dashboard",
+    "difficulty": "Advanced",
+    "type": "Design",
+    "minutes": 12,
+    "prompt": "Design a relational schema for a real-time analytics dashboard.",
+    "answer": [
+      "Start with dashboard measures, dimensional filters, required freshness and the grain of each fact. Keep an immutable event or transaction identity so duplicate delivery cannot inflate totals, and model dimensions with appropriate historical semantics. Separate ingestion-oriented raw records from trusted analytical tables when their contracts differ. A dashboard requiring a minute of freshness does not necessarily require recalculating every aggregate from raw history on every request.",
+      "Build incremental summaries at the dimensions and time buckets used by the dominant queries, with explicit handling for late events, corrections and replay. Preserve enough detail to reconcile summaries to source facts. In a PostgreSQL study design, time partitioning may support bounded scans and retention, while indexes should match selective filters and joins. Validate concurrent ingestion and read latency together. More denormalization can simplify reads but adds update and consistency work, so justify it with measured workload needs."
+    ],
+    "code": "",
+    "language": "sql",
+    "pitfalls": [
+      "Mixing grains in a fact table produces misleading totals.",
+      "An increment-only summary cannot correct late deletes or updates without additional logic."
+    ],
+    "followups": [
+      "What evidence would you use to validate this approach?",
+      "Which failure or concurrency case would change your design?"
+    ],
+    "sourceUrl": "https://www.postgresql.org/docs/current/ddl-partitioning.html",
+    "provenance": {
+      "kind": "candidate-reported",
+      "url": "https://www.linkedin.com/posts/isha90_sql-dataanalyst-businessanalyst-activity-7412490615801909250-8n_U",
+      "author": "Isha Rajput",
+      "title": "Self-reported SQL interview questions",
+      "company": null,
+      "experience": null,
+      "role": null,
+      "accessedAt": "2026-11-18",
+      "scope": "reported-question",
+      "note": "Self-reported question list; employer and interview context not stated. Not independently verified. Question paraphrased; answer and study examples independently written."
+    }
+  },
+  {
+    "id": "li-sql-d010",
+    "subject": "sql",
+    "topic": "Data integrity",
+    "subtopic": "Validation without foreign-key constraints",
+    "title": "Protect integrity without foreign keys",
+    "difficulty": "Advanced",
+    "type": "Design",
+    "minutes": 12,
+    "prompt": "Enforce data integrity without foreign-key constraints.",
+    "answer": [
+      "Separate the invariants: NOT NULL, UNIQUE and CHECK constraints still protect individual-row properties when foreign keys are unavailable. Referential integrity between tables is harder. An application existence check followed by an insert can race with a concurrent parent deletion, so validation alone is not equivalent to an enforced foreign key. Document whether the requirement is immediate enforcement or eventual detection and reconciliation.",
+      "For strict enforcement, a carefully designed transactional protocol must cover every write path, including parent changes, concurrent child writes, bulk jobs and administrative tools. Database triggers require correct locking and transaction semantics; they are not automatically safe just because they run in the database. For eventual consistency, quarantine unresolved references, retain source identities and run repeatable reconciliation with a repair policy. Prefer supported database foreign keys when possible instead of recreating their concurrency guarantees incompletely."
+    ],
+    "code": "",
+    "language": "sql",
+    "pitfalls": [
+      "An existence check outside a protective transaction is vulnerable to races.",
+      "A reconciliation report detects violations; it does not prevent them."
+    ],
+    "followups": [
+      "What evidence would you use to validate this approach?",
+      "Which failure or concurrency case would change your design?"
+    ],
+    "sourceUrl": "https://www.postgresql.org/docs/current/ddl-constraints.html",
+    "provenance": {
+      "kind": "candidate-reported",
+      "url": "https://www.linkedin.com/posts/isha90_sql-dataanalyst-businessanalyst-activity-7412490615801909250-8n_U",
+      "author": "Isha Rajput",
+      "title": "Self-reported SQL interview questions",
+      "company": null,
+      "experience": null,
+      "role": null,
+      "accessedAt": "2026-11-18",
+      "scope": "reported-question",
+      "note": "Self-reported question list; employer and interview context not stated. Not independently verified. Question paraphrased; answer and study examples independently written."
+    }
+  },
+  {
+    "id": "li-sql-d011",
+    "subject": "sql",
+    "topic": "SQL Server internals",
+    "subtopic": "tempdb allocation contention",
+    "title": "Diagnose tempdb contention",
+    "difficulty": "Advanced",
+    "type": "Scenario",
+    "minutes": 12,
+    "prompt": "SQL Server: diagnose tempdb contention.",
+    "answer": [
+      "Confirm the wait evidence before changing configuration. tempdb allocation contention can involve PAGELATCH waits on shared allocation structures; those are not the same as PAGEIOLATCH waits for storage reads. Identify the affected database, file and page, then connect the contention to temporary-object churn, sorts, hashes or other workload behavior. A growing tempdb file alone does not prove allocation-latch contention.",
+      "Use equally sized data files with consistent growth settings, and follow guidance appropriate to the installed SQL Server version. Current general guidance starts with one file per logical processor up to eight; further increases should follow measured contention rather than an unlimited one-file-per-core rule. Pre-size for the workload, review spills and unnecessary temporary-object creation, and measure the wait reduction after each change. Historical trace-flag advice should not be applied blindly to newer releases."
+    ],
+    "code": "",
+    "language": "sql",
+    "pitfalls": [
+      "PAGELATCH contention and PAGEIOLATCH storage waits require different diagnoses.",
+      "More files are not a substitute for confirming the bottleneck."
+    ],
+    "followups": [
+      "What evidence would you use to validate this approach?",
+      "Which failure or concurrency case would change your design?"
+    ],
+    "sourceUrl": "https://learn.microsoft.com/en-us/sql/relational-databases/databases/tempdb-database",
+    "provenance": {
+      "kind": "candidate-reported",
+      "url": "https://www.linkedin.com/posts/arunkumar-bandari-41a1b721b_ms-sql-dba-interview-questions-my-recent-activity-7293699224364363776-KSnT",
+      "author": "Arunkumar Bandari",
+      "title": "SQL Server DBA interview report",
+      "company": null,
+      "experience": null,
+      "role": "SQL Server DBA",
+      "accessedAt": "2026-11-18",
+      "scope": "reported-question",
+      "note": "Self-reported interviews across unspecified companies; not independently verified. Question paraphrased; answer independently written."
+    }
+  },
+  {
+    "id": "li-sql-d012",
+    "subject": "sql",
+    "topic": "SQL Server internals",
+    "subtopic": "Dirty-page writers and recovery",
+    "title": "Compare lazy writer and checkpoint",
+    "difficulty": "Advanced",
+    "type": "Concept",
+    "minutes": 8,
+    "prompt": "SQL Server: compare lazy writer with checkpoint.",
+    "answer": [
+      "Both mechanisms can write modified buffer pages, but their purposes differ. The lazy writer helps make reusable buffers available under memory demand, while checkpoints establish a recovery position by flushing relevant dirty pages and recording recovery information. A checkpoint is not simply a command to empty the buffer pool, and lazy writing does not replace the database recovery role of checkpoints.",
+      "Relate the distinction to evidence. Sustained lazy writes together with memory pressure and repeated reads can point to a working set that does not fit well, while checkpoint-related write bursts can stress the storage path. Inspect workload, memory and I/O counters together before changing memory limits or checkpoint settings. Do not equate a page reaching a data file with the moment a transaction commits; transaction logging and crash recovery provide a separate correctness contract."
+    ],
+    "code": "",
+    "language": "sql",
+    "pitfalls": [
+      "Checkpoint does not mean evict every cached page.",
+      "Commit durability and dirty-page flushing are different events."
+    ],
+    "followups": [
+      "What evidence would you use to validate this approach?",
+      "Which failure or concurrency case would change your design?"
+    ],
+    "sourceUrl": "https://learn.microsoft.com/en-us/sql/relational-databases/logs/database-checkpoints-sql-server",
+    "provenance": {
+      "kind": "candidate-reported",
+      "url": "https://www.linkedin.com/posts/arunkumar-bandari-41a1b721b_ms-sql-dba-interview-questions-my-recent-activity-7293699224364363776-KSnT",
+      "author": "Arunkumar Bandari",
+      "title": "SQL Server DBA interview report",
+      "company": null,
+      "experience": null,
+      "role": "SQL Server DBA",
+      "accessedAt": "2026-11-18",
+      "scope": "reported-question",
+      "note": "Self-reported interviews across unspecified companies; not independently verified. Question paraphrased; answer independently written."
+    }
+  },
+  {
+    "id": "li-sql-d013",
+    "subject": "sql",
+    "topic": "SQL Server internals",
+    "subtopic": "Buffer cache and physical reads",
+    "title": "Explain the SQL Server buffer pool",
+    "difficulty": "Advanced",
+    "type": "Concept",
+    "minutes": 8,
+    "prompt": "SQL Server: explain buffer pool memory.",
+    "answer": [
+      "The buffer pool caches database pages in memory so repeated access can avoid physical reads. The buffer manager brings pages into cache and coordinates writing modified pages back to storage. Data and index access therefore depend on the working set and access pattern, not just database file size. A workload that repeatedly scans unrelated large regions can create pressure even when individual queries appear simple.",
+      "Reserve memory for the operating system and other instance consumers rather than assigning all physical RAM to the database engine. Interpret cache-related counters over representative intervals and alongside physical reads, waits, query plans and memory grants. A high cache-hit ratio alone cannot demonstrate healthy response time. Reduce unnecessary reads through appropriate query and index design before assuming more memory is the only solution, and verify resource changes under the actual concurrent workload."
+    ],
+    "code": "",
+    "language": "sql",
+    "pitfalls": [
+      "The entire SQL Server process is not just the buffer pool.",
+      "One cache counter cannot establish the root cause of a slow workload."
+    ],
+    "followups": [
+      "What evidence would you use to validate this approach?",
+      "Which failure or concurrency case would change your design?"
+    ],
+    "sourceUrl": "https://learn.microsoft.com/en-us/sql/relational-databases/memory-management-architecture-guide",
+    "provenance": {
+      "kind": "candidate-reported",
+      "url": "https://www.linkedin.com/posts/arunkumar-bandari-41a1b721b_ms-sql-dba-interview-questions-my-recent-activity-7293699224364363776-KSnT",
+      "author": "Arunkumar Bandari",
+      "title": "SQL Server DBA interview report",
+      "company": null,
+      "experience": null,
+      "role": "SQL Server DBA",
+      "accessedAt": "2026-11-18",
+      "scope": "reported-question",
+      "note": "Self-reported interviews across unspecified companies; not independently verified. Question paraphrased; answer independently written."
+    }
+  },
+  {
+    "id": "li-sql-d014",
+    "subject": "sql",
+    "topic": "SQL Server internals",
+    "subtopic": "Database file limits and design",
+    "title": "Reason about database file limits",
+    "difficulty": "Advanced",
+    "type": "Concept",
+    "minutes": 8,
+    "prompt": "SQL Server: how many database files are supported?",
+    "answer": [
+      "Microsoft documents 32,767 files per database for the supported SQL Server versions covered by its capacity specification. This is a maximum capacity limit, not a recommended data-file count or a statement that every edition can use arbitrary storage capacity. Distinguish files, filegroups, database size and per-file size; they are separate limits and design decisions.",
+      "Choose a practical file layout from storage architecture, workload, manageability and recovery needs. Creating thousands of files does not automatically create more independent I/O bandwidth when they share the same underlying storage. In an interview, state which SQL Server version and edition are being discussed, confirm whether the question means data files or all database files, and consult the matching capacity and edition documentation before using a numeric limit in a production design."
+    ],
+    "code": "",
+    "language": "sql",
+    "pitfalls": [
+      "A supported maximum is not a performance recommendation.",
+      "Do not confuse filegroups with files or edition capacity limits."
+    ],
+    "followups": [
+      "What evidence would you use to validate this approach?",
+      "Which failure or concurrency case would change your design?"
+    ],
+    "sourceUrl": "https://learn.microsoft.com/en-us/sql/sql-server/maximum-capacity-specifications-for-sql-server",
+    "provenance": {
+      "kind": "candidate-reported",
+      "url": "https://www.linkedin.com/posts/arunkumar-bandari-41a1b721b_ms-sql-dba-interview-questions-my-recent-activity-7293699224364363776-KSnT",
+      "author": "Arunkumar Bandari",
+      "title": "SQL Server DBA interview report",
+      "company": null,
+      "experience": null,
+      "role": "SQL Server DBA",
+      "accessedAt": "2026-11-18",
+      "scope": "reported-question",
+      "note": "Self-reported interviews across unspecified companies; not independently verified. Question paraphrased; answer independently written."
+    }
+  },
+  {
+    "id": "li-sql-d015",
+    "subject": "sql",
+    "topic": "SQL Server internals",
+    "subtopic": "Storage page categories",
+    "title": "Explain SQL Server page types",
+    "difficulty": "Advanced",
+    "type": "Concept",
+    "minutes": 8,
+    "prompt": "SQL Server: describe page types.",
+    "answer": [
+      "SQL Server organizes data files into fixed-size pages and groups pages into extents. Data pages hold row data, index pages participate in index structures, and allocation metadata pages track how storage is used. Important examples include PFS for page allocation and free-space information, GAM and SGAM for extent allocation, and IAM for extents belonging to an allocation unit.",
+      "Explain a category through its operational purpose rather than only reciting abbreviations. Allocation-page contention is different from a user-row lock, and an index access path can touch several levels of pages before reaching the requested row. Large-object and row-overflow storage can place portions of values outside the main row. These are SQL Server implementation concepts; do not transfer their page names directly to PostgreSQL or assume transaction log files share the same fixed-page organization as data files."
+    ],
+    "code": "",
+    "language": "sql",
+    "pitfalls": [
+      "Internal storage latches are not application transaction locks.",
+      "SQL Server page categories are not portable SQL concepts."
+    ],
+    "followups": [
+      "What evidence would you use to validate this approach?",
+      "Which failure or concurrency case would change your design?"
+    ],
+    "sourceUrl": "https://learn.microsoft.com/en-us/sql/relational-databases/pages-and-extents-architecture-guide",
+    "provenance": {
+      "kind": "candidate-reported",
+      "url": "https://www.linkedin.com/posts/arunkumar-bandari-41a1b721b_ms-sql-dba-interview-questions-my-recent-activity-7293699224364363776-KSnT",
+      "author": "Arunkumar Bandari",
+      "title": "SQL Server DBA interview report",
+      "company": null,
+      "experience": null,
+      "role": "SQL Server DBA",
+      "accessedAt": "2026-11-18",
+      "scope": "reported-question",
+      "note": "Self-reported interviews across unspecified companies; not independently verified. Question paraphrased; answer independently written."
+    }
+  },
+  {
+    "id": "li-sql-d016",
+    "subject": "sql",
+    "topic": "SQL Server operations",
+    "subtopic": "Backup and restore throughput",
+    "title": "Improve backup and restore performance",
+    "difficulty": "Advanced",
+    "type": "Scenario",
+    "minutes": 12,
+    "prompt": "SQL Server: improve backup and restore performance.",
+    "answer": [
+      "Measure whether the limiting resource is source reads, backup-target throughput, CPU for compression or encryption, network bandwidth, or restore destination writes. Compare representative full operations, not just backup file size. Compression can reduce transferred bytes but consumes CPU; its net effect depends on available resources and concurrent workload. Multiple backup devices help only when the full storage path can sustain useful parallelism.",
+      "Treat backup and restore as a paired recovery design. Validate a restored database, required encryption material and the complete recovery sequence against the business recovery objective. Options such as buffer count and maximum transfer size influence memory and I/O behavior and should be tuned carefully for the specific SQL Server version and destination, not copied as universal constants. Keep evidence of successful restores; a fast backup without a tested recovery procedure does not establish recoverability."
+    ],
+    "code": "",
+    "language": "sql",
+    "pitfalls": [
+      "Compression can shift the bottleneck from storage to CPU.",
+      "A successful backup file is not proof of a successful restore."
+    ],
+    "followups": [
+      "What evidence would you use to validate this approach?",
+      "Which failure or concurrency case would change your design?"
+    ],
+    "sourceUrl": "https://learn.microsoft.com/en-us/sql/relational-databases/backup-restore/backup-compression-sql-server",
+    "provenance": {
+      "kind": "candidate-reported",
+      "url": "https://www.linkedin.com/posts/arunkumar-bandari-41a1b721b_ms-sql-dba-interview-questions-my-recent-activity-7293699224364363776-KSnT",
+      "author": "Arunkumar Bandari",
+      "title": "SQL Server DBA interview report",
+      "company": null,
+      "experience": null,
+      "role": "SQL Server DBA",
+      "accessedAt": "2026-11-18",
+      "scope": "reported-question",
+      "note": "Self-reported interviews across unspecified companies; not independently verified. Question paraphrased; answer independently written."
+    }
+  }
+]

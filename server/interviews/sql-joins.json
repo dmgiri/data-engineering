@@ -1,0 +1,1218 @@
+[
+  {
+    "id": "li-sql-b001",
+    "subject": "sql",
+    "topic": "Aggregation",
+    "subtopic": "Conditional proportions and department qualification",
+    "title": "Departments by high-pay share",
+    "difficulty": "Intermediate",
+    "type": "Coding",
+    "minutes": 10,
+    "prompt": "Rank three departments by the proportion earning over 300000; require at least ten employees. Study assumptions: return exactly three departments, breaking ties by ID.",
+    "answer": [
+      "Aggregate each department before ranking it. COUNT(*) supplies the employee population, while a filtered count supplies the number whose salary exceeds the threshold. Multiply by a numeric constant before division so integer arithmetic does not truncate the fraction. HAVING eliminates departments with fewer than ten employees. Sorting the resulting fractions descending measures the requested share rather than the raw number of higher earners; a smaller department can therefore outrank a larger one.",
+      "Study assumptions: employees(id,department_id,salary) has one row per employee, department IDs are known, and unknown salaries count in the denominator but not the numerator. The original question does not settle tied third place; this version returns at most three departments with a stable ID tie-breaker. If every department tied at the cutoff must qualify, use DENSE_RANK on the fraction alone instead. Keep the unrounded fraction for sorting and round only the displayed percentage to avoid creating artificial ties."
+    ],
+    "code": "-- PostgreSQL; Study assumptions: employees(id bigint PRIMARY KEY,\n-- department_id integer NOT NULL, salary numeric).\nWITH department_counts AS (\n  SELECT department_id, COUNT(*) AS employees,\n         COUNT(*) FILTER (WHERE salary > 300000) AS high_paid\n  FROM employees\n  GROUP BY department_id\n  HAVING COUNT(*) >= 10\n)\nSELECT department_id, employees, high_paid,\n       ROUND(100.0 * high_paid / employees, 2) AS high_paid_percent\nFROM department_counts\nORDER BY 1.0 * high_paid / employees DESC, department_id\nLIMIT 3;",
+    "language": "sql",
+    "pitfalls": [
+      "Dividing two integers and truncating the proportion.",
+      "Ranking by the number of high earners instead of their fraction."
+    ],
+    "followups": [
+      "Study extension: include every department tied at the third distinct percentage.",
+      "Study extension: exclude unknown salaries from both populations."
+    ],
+    "sourceUrl": "https://www.postgresql.org/docs/current/functions-aggregate.html",
+    "provenance": {
+      "kind": "candidate-reported",
+      "scope": "reported-question",
+      "url": "https://www.linkedin.com/posts/gaurav-gaikwad-894560160_dataengineering-sqlchallenge-azuredataengineer-activity-7317413109416009728-uWw4",
+      "author": "GAURAV GAIKWAD",
+      "title": "Cognizant Azure Data Engineer interview",
+      "company": "Cognizant",
+      "experience": "4 years",
+      "role": "Azure Data Engineer",
+      "accessedAt": "2026-11-18",
+      "note": "Self-reported interview account; not independently verified. Question paraphrased; answer independently written."
+    }
+  },
+  {
+    "id": "li-sql-b002",
+    "subject": "sql",
+    "topic": "Aggregation",
+    "subtopic": "Maximum value within each group",
+    "title": "Department salary maxima",
+    "difficulty": "Beginner",
+    "type": "Coding",
+    "minutes": 8,
+    "prompt": "Find each department's maximum salary. Study assumptions: employees(id,department_id,salary); return department-level values.",
+    "answer": [
+      "A grouped MAX computes one salary value per department. GROUP BY defines the output grain, so selecting an employee name alongside that maximum would be incorrect unless another step determines which employee owns it. This query answers the department-level interpretation reported in the post. MAX ignores null salary inputs and returns null for a department whose employees all have unknown pay, keeping that distinction visible rather than treating unknown pay as zero.",
+      "If employee details are required, first compute these department maxima and then join employees on both department and salary. That variation returns all employees tied for their department's maximum. Study assumptions: every row represents one employee and department identifiers are non-null. Empty departments do not appear because the input is the employee table; include a departments dimension with a left join if zero-employee departments must be listed. Test one-person departments, tied maxima, negative numeric inputs if allowed, and groups containing only null salaries."
+    ],
+    "code": "-- PostgreSQL; Study assumptions: employees(id bigint PRIMARY KEY,\n-- department_id integer NOT NULL, salary numeric).\nSELECT department_id, MAX(salary) AS maximum_salary\nFROM employees\nGROUP BY department_id\nORDER BY department_id;",
+    "language": "sql",
+    "pitfalls": [
+      "Selecting an arbitrary employee name beside a grouped maximum.",
+      "Replacing missing salary with zero and changing the result."
+    ],
+    "followups": [
+      "Study extension: return every employee tied at the department maximum.",
+      "Study extension: include departments without employees."
+    ],
+    "sourceUrl": "https://www.postgresql.org/docs/current/functions-aggregate.html",
+    "provenance": {
+      "kind": "candidate-reported",
+      "scope": "reported-question",
+      "url": "https://www.linkedin.com/posts/pratik-jugant-mohapatra-_sql-powerbi-dataanalytics-activity-7236749926943088641-exof",
+      "author": "Pratik Jugant Mohapatra",
+      "title": "Senior Data Associate interview",
+      "company": null,
+      "experience": null,
+      "role": "Senior Data Associate",
+      "accessedAt": "2026-11-18",
+      "note": "Self-reported interview account; not independently verified. Question paraphrased; answer independently written."
+    }
+  },
+  {
+    "id": "li-sql-b003",
+    "subject": "sql",
+    "topic": "Joins",
+    "subtopic": "Self-join with a manager relationship",
+    "title": "Out-earning the manager",
+    "difficulty": "Beginner",
+    "type": "Coding",
+    "minutes": 8,
+    "prompt": "Find employees paid more than their own manager. Study assumptions: employees(id,name,manager_id,salary).",
+    "answer": [
+      "Read the employees table twice with distinct aliases: one represents the employee and the other represents that employee's manager. Join the employee's manager_id to the manager's primary key, then compare the two salaries. The join relationship matters more than the fact that both rows come from one table. A comparison against the company maximum or departmental average answers a different question because neither identifies the employee's actual reporting line.",
+      "Study assumptions: id uniquely identifies a person, manager_id refers to that same identifier, and null manager_id means no assigned manager. An inner join intentionally excludes unassigned employees and broken manager references. If either salary is unknown, the strict greater-than comparison is not true and the employee is omitted. A manager can also report to another manager; no recursion is necessary because this problem examines only the immediate reporting relationship. Use identifiers in the output to distinguish people who share a name."
+    ],
+    "code": "-- PostgreSQL; Study assumptions: employees(id bigint PRIMARY KEY, name text,\n-- manager_id bigint, salary numeric).\nSELECT e.id, e.name, e.salary,\n       m.id AS manager_id, m.name AS manager_name, m.salary AS manager_salary\nFROM employees AS e\nJOIN employees AS m ON m.id = e.manager_id\nWHERE e.salary > m.salary\nORDER BY e.id;",
+    "language": "sql",
+    "pitfalls": [
+      "Joining employee and manager rows by department rather than manager_id.",
+      "Assuming identical names identify the same person."
+    ],
+    "followups": [
+      "Study extension: include employees with missing manager references in a diagnostic result.",
+      "Study extension: compare employees with every manager above them."
+    ],
+    "sourceUrl": "https://www.postgresql.org/docs/current/queries-table-expressions.html",
+    "provenance": {
+      "kind": "candidate-reported",
+      "scope": "reported-question",
+      "url": "https://www.linkedin.com/posts/pratik-jugant-mohapatra-_sql-powerbi-dataanalytics-activity-7236749926943088641-exof",
+      "author": "Pratik Jugant Mohapatra",
+      "title": "Senior Data Associate interview",
+      "company": null,
+      "experience": null,
+      "role": "Senior Data Associate",
+      "accessedAt": "2026-11-18",
+      "note": "Self-reported interview account; not independently verified. Question paraphrased; answer independently written."
+    }
+  },
+  {
+    "id": "li-sql-b004",
+    "subject": "sql",
+    "topic": "Joins",
+    "subtopic": "Duplicate multiplicity and null comparison",
+    "title": "Predict join row counts",
+    "difficulty": "Intermediate",
+    "type": "Coding",
+    "minutes": 10,
+    "prompt": "Predict INNER, LEFT, RIGHT and FULL join counts. Study assumptions: A(k)=(1,1,2,NULL); B(k)=(1,3,NULL), joined with equality.",
+    "answer": [
+      "For every non-null key, multiply its frequency on the left by its frequency on the right to obtain its number of matching pairs. Here key 1 produces two pairs. Key 2, key 3, and the two null-key rows have no equality match. The inner join therefore has two rows; the left join adds two unmatched left rows for four; the right join adds two unmatched right rows for four; and the full join has six.",
+      "These sample values are study assumptions, since the candidate reported join-output counting without publishing the assessment tables. SQL retains duplicate rows unless explicitly instructed otherwise, and NULL = NULL is unknown rather than true. The full join consequently preserves the two null inputs as separate unmatched rows. Counting a nullable column would hide those null-extended rows, so the demonstration uses COUNT(*). A null-safe equality predicate changes the matching rule and therefore changes these counts; explain the predicate before doing arithmetic."
+    ],
+    "code": "-- PostgreSQL; Study assumptions: the VALUES inputs below are illustrative,\n-- and joins use ordinary equality, not null-safe equality.\nWITH a(k) AS (VALUES (1),(1),(2),(NULL::integer)),\n     b(k) AS (VALUES (1),(3),(NULL::integer))\nSELECT 'INNER' AS join_type, COUNT(*) AS rows FROM a JOIN b ON a.k = b.k\nUNION ALL\nSELECT 'LEFT', COUNT(*) FROM a LEFT JOIN b ON a.k = b.k\nUNION ALL\nSELECT 'RIGHT', COUNT(*) FROM a RIGHT JOIN b ON a.k = b.k\nUNION ALL\nSELECT 'FULL', COUNT(*) FROM a FULL JOIN b ON a.k = b.k;",
+    "language": "sql",
+    "pitfalls": [
+      "Counting distinct matching keys instead of matching row pairs.",
+      "Treating null keys as equal under the = predicate."
+    ],
+    "followups": [
+      "Study extension: recalculate using IS NOT DISTINCT FROM.",
+      "Study extension: derive the counts from per-key frequency tables."
+    ],
+    "sourceUrl": "https://www.postgresql.org/docs/current/queries-table-expressions.html",
+    "provenance": {
+      "kind": "candidate-reported",
+      "scope": "reported-topic",
+      "url": "https://www.linkedin.com/posts/pratik-jugant-mohapatra-_sql-powerbi-dataanalytics-activity-7236749926943088641-exof",
+      "author": "Pratik Jugant Mohapatra",
+      "title": "Senior Data Associate interview",
+      "company": null,
+      "experience": null,
+      "role": "Senior Data Associate",
+      "accessedAt": "2026-11-18",
+      "note": "Self-reported interview account; not independently verified. Question paraphrased; answer independently written."
+    }
+  },
+  {
+    "id": "li-sql-b005",
+    "subject": "sql",
+    "topic": "Data quality",
+    "subtopic": "Repeated business-key rows with a CTE",
+    "title": "Repeated employee records",
+    "difficulty": "Intermediate",
+    "type": "Coding",
+    "minutes": 10,
+    "prompt": "Use a CTE to find repeated employee-name and department combinations. Study assumptions: retain every extra row after the lowest salary, then ID.",
+    "answer": [
+      "Number rows within each employee-name and department combination. The partition columns define what counts as the same business key; the ordering selects which row is treated as its first occurrence. Filtering row numbers greater than one returns the extra records without collapsing their other details. This differs from a grouped COUNT, which reports duplicate keys but does not directly retain each duplicate row's salary or identifier.",
+      "Study assumptions: employees(id,emp_name,dept,salary) has a unique id, and the lowest known salary followed by the smallest id is the designated first occurrence. That ordering completes the candidate's reported example; it is an exercise convention rather than a recommended personnel-record policy. Null names and departments group together in window partitions, while explicit NULLS LAST keeps missing salaries behind known ones. The query only identifies extra rows. Any deletion would require confirming a survivor rule and validating downstream references first."
+    ],
+    "code": "-- PostgreSQL; Study assumptions: employees(id bigint PRIMARY KEY,\n-- emp_name text, dept text, salary numeric); lowest salary then ID survives.\nWITH numbered AS (\n  SELECT id, emp_name, dept, salary,\n         ROW_NUMBER() OVER (\n           PARTITION BY emp_name, dept ORDER BY salary ASC NULLS LAST, id\n         ) AS occurrence\n  FROM employees\n)\nSELECT id, emp_name, dept, salary\nFROM numbered\nWHERE occurrence > 1\nORDER BY emp_name, dept, occurrence;",
+    "language": "sql",
+    "pitfalls": [
+      "Partitioning by salary as well and missing changed versions of the same key.",
+      "Using salary alone to choose a survivor when salaries tie."
+    ],
+    "followups": [
+      "Study extension: return duplicate key counts instead of individual extra rows.",
+      "Study extension: explain why a name may be a poor employee business key."
+    ],
+    "sourceUrl": "https://www.postgresql.org/docs/current/functions-window.html",
+    "provenance": {
+      "kind": "candidate-reported",
+      "scope": "reported-question",
+      "url": "https://www.linkedin.com/posts/magudeswaranm_hi-data-fam-recently-i-was-asked-some-activity-7267568483368845315-FMyI",
+      "author": "Magudeswaran M",
+      "title": "Reported SQL window and CTE interview questions",
+      "company": null,
+      "experience": null,
+      "role": null,
+      "accessedAt": "2026-11-18",
+      "note": "Self-reported interview account; not independently verified. Question paraphrased; answer independently written."
+    }
+  },
+  {
+    "id": "li-sql-b006",
+    "subject": "sql",
+    "topic": "Aggregation",
+    "subtopic": "Regional averages and missing measurements",
+    "title": "Average regional sales",
+    "difficulty": "Beginner",
+    "type": "Coding",
+    "minutes": 8,
+    "prompt": "Calculate average sales by region. Study assumptions: sales(region,amount); each row is one equally weighted sale.",
+    "answer": [
+      "Group sales rows by region and compute AVG(amount) within each group. This produces one measurement per region rather than an average repeated on every transaction. AVG ignores null amounts, so it represents the mean of the observed values. Including COUNT(amount) alongside the average makes the number of contributing observations visible and helps distinguish a reliable result from a region with little known data.",
+      "Study assumptions: each row has equal weight and amount is a numeric sale value. An average transaction amount is not the same metric as an average monthly total or average revenue per customer, so establish the intended grain first. A region containing only null amounts has an observed count of zero and a null average. An absent region has no row at all unless a separate regional dimension is joined. Do not impute zeros for unknown amounts without an explicit business rule, since doing so changes the question."
+    ],
+    "code": "-- PostgreSQL; Study assumptions: sales(region text, amount numeric),\n-- one equally weighted transaction per row.\nSELECT region, COUNT(amount) AS observed_sales, AVG(amount) AS average_sale\nFROM sales\nGROUP BY region\nORDER BY region;",
+    "language": "sql",
+    "pitfalls": [
+      "Averaging region totals when the required metric is a transaction average.",
+      "Treating unknown amounts as zero without a stated policy."
+    ],
+    "followups": [
+      "Study extension: compute a weighted average from quantities and unit prices.",
+      "Study extension: include regions that have no transactions."
+    ],
+    "sourceUrl": "https://www.postgresql.org/docs/current/functions-aggregate.html",
+    "provenance": {
+      "kind": "candidate-reported",
+      "scope": "reported-question",
+      "url": "https://www.linkedin.com/posts/magudeswaranm_hi-data-fam-recently-i-was-asked-some-activity-7267568483368845315-FMyI",
+      "author": "Magudeswaran M",
+      "title": "Reported SQL window and CTE interview questions",
+      "company": null,
+      "experience": null,
+      "role": null,
+      "accessedAt": "2026-11-18",
+      "note": "Self-reported interview account; not independently verified. Question paraphrased; answer independently written."
+    }
+  },
+  {
+    "id": "li-sql-b007",
+    "subject": "sql",
+    "topic": "Data quality",
+    "subtopic": "Choosing a survivor by business key",
+    "title": "Keep the authoritative version",
+    "difficulty": "Intermediate",
+    "type": "Coding",
+    "minutes": 12,
+    "prompt": "Remove duplicate versions using an explicit business key and retention rule. Study assumptions: orders(id,order_key,updated_at); keep the latest known timestamp, then greatest ID.",
+    "answer": [
+      "Start by defining the business key and the rule for choosing an authoritative row. SELECT DISTINCT only removes identical projected rows; it cannot choose between versions whose timestamps or attributes differ. Under the study assumptions, assign each order_key a row number ordered by latest update and greatest ID. Rows after the first are redundant versions under that particular policy. Preview them before performing the matching deletion.",
+      "The candidate reported a discussion about duplicate semantics rather than a fully specified schema, so this survivor rule is supplied for study. Null timestamps are deliberately last, and a unique ID makes equal timestamps deterministic. Deleting versions can destroy history or break foreign keys; a production workflow may instead move versions to an archive or expose a current-record view. Run the example in a transaction and inspect the deleted rows. Its final ROLLBACK is intentional so executing the study code does not persist a cleanup."
+    ],
+    "code": "-- PostgreSQL; Study assumptions: orders(id bigint PRIMARY KEY,\n-- order_key text NOT NULL, updated_at timestamptz); latest version survives.\nBEGIN;\nWITH numbered AS (\n  SELECT id, ROW_NUMBER() OVER (\n    PARTITION BY order_key ORDER BY updated_at DESC NULLS LAST, id DESC\n  ) AS version_position\n  FROM orders\n)\nDELETE FROM orders AS o\nUSING numbered AS n\nWHERE o.id = n.id AND n.version_position > 1\nRETURNING o.*;\nROLLBACK;",
+    "language": "sql",
+    "pitfalls": [
+      "Using DISTINCT as if it selected the latest business-key version.",
+      "Deleting historical versions before confirming retention and foreign-key rules."
+    ],
+    "followups": [
+      "Study extension: expose only current rows through a view.",
+      "Study extension: use a trusted source-priority column before timestamp."
+    ],
+    "sourceUrl": "https://www.postgresql.org/docs/current/sql-delete.html",
+    "provenance": {
+      "kind": "candidate-reported",
+      "scope": "reported-topic",
+      "url": "https://www.linkedin.com/posts/sharmajubin_sql-sqlinterview-dataengineering-activity-7477208062026477568-35Ef",
+      "author": "Jubin Sharma",
+      "title": "Duplicate-removal interview discussion",
+      "company": null,
+      "experience": null,
+      "role": null,
+      "accessedAt": "2026-11-18",
+      "note": "Self-reported interview account; not independently verified. Question paraphrased; answer independently written."
+    }
+  },
+  {
+    "id": "li-sql-b008",
+    "subject": "sql",
+    "topic": "Aggregation",
+    "subtopic": "Conditional aggregation into fixed output columns",
+    "title": "Quarterly pivot",
+    "difficulty": "Intermediate",
+    "type": "Coding",
+    "minutes": 10,
+    "prompt": "Pivot rows into columns.",
+    "answer": [
+      "A static pivot is conditional aggregation: each output column aggregates only rows belonging to its category. Group by the entity that should occupy one output row, then compute separate filtered sums for the chosen quarter values. This keeps the transformation explicit and avoids depending on a vendor-specific PIVOT operator. The example produces one product row with four numeric quarter columns.",
+      "Study assumptions: sales(product_id,quarter,amount) contains quarter numbers 1 through 4 for one reporting year, multiple transactions may occur in a quarter, and absent or entirely unknown amounts display as zero. COALESCE applies that last reporting convention after aggregation. Include year in the grouping if the input spans several years; otherwise unrelated periods merge. Dynamic category values require generating a column list or returning a row or JSON representation, since an ordinary SQL statement has a fixed result shape."
+    ],
+    "code": "-- PostgreSQL; Study assumptions: sales(product_id integer,\n-- quarter integer CHECK (quarter BETWEEN 1 AND 4), amount numeric), one year.\nSELECT product_id,\n       COALESCE(SUM(amount) FILTER (WHERE quarter = 1), 0) AS q1,\n       COALESCE(SUM(amount) FILTER (WHERE quarter = 2), 0) AS q2,\n       COALESCE(SUM(amount) FILTER (WHERE quarter = 3), 0) AS q3,\n       COALESCE(SUM(amount) FILTER (WHERE quarter = 4), 0) AS q4\nFROM sales\nGROUP BY product_id\nORDER BY product_id;",
+    "language": "sql",
+    "pitfalls": [
+      "Combining the same quarter across different years inadvertently.",
+      "Using MAX instead of SUM when a quarter has multiple transactions."
+    ],
+    "followups": [
+      "Study extension: distinguish no transactions from unknown amounts.",
+      "Study extension: return dynamic categories as a JSON object."
+    ],
+    "sourceUrl": "https://www.postgresql.org/docs/current/sql-expressions.html",
+    "provenance": {
+      "kind": "candidate-reported",
+      "scope": "reported-question",
+      "url": "https://www.linkedin.com/posts/rohit-honde-50a100185_sql-dataengineering-interviewquestions-activity-7347906057634988032-cgF3",
+      "author": "Rohit Honde",
+      "title": "Self-reported SQL interview question list",
+      "company": null,
+      "experience": null,
+      "role": null,
+      "accessedAt": "2026-11-18",
+      "note": "Self-reported question list; employer/interview context not stated. Self-reported interview account; not independently verified. Question paraphrased; answer independently written."
+    }
+  },
+  {
+    "id": "li-sql-b009",
+    "subject": "sql",
+    "topic": "Data quality",
+    "subtopic": "Anti-join diagnostics and controlled deletion",
+    "title": "Remove orphan rows",
+    "difficulty": "Intermediate",
+    "type": "Coding",
+    "minutes": 12,
+    "prompt": "Find and delete broken parent references.",
+    "answer": [
+      "An orphan has a non-null reference to a parent that does not exist. A correlated NOT EXISTS checks that absence without multiplying child rows and without the null behavior of NOT IN. First use the predicate in a SELECT to preview the affected children. Then apply the same predicate in DELETE, inspecting RETURNING to see exactly which rows would be removed.",
+      "Study assumptions: child(id,parent_id) permits nullable parent_id, a null reference means an optional relationship rather than corruption, and parent(id) contains the valid identifiers. An enforced foreign key normally prevents new orphans, so investigate disabled constraints, staging loads, or historical imports before treating deletion as the answer. The demonstration rolls back its mutation. In production, coordinate concurrent parent changes and add an appropriate foreign key after repairing existing data; deleting rows alone does not prevent the problem recurring."
+    ],
+    "code": "-- PostgreSQL; Study assumptions: parent(id bigint PRIMARY KEY),\n-- child(id bigint PRIMARY KEY, parent_id bigint); NULL means optional.\nBEGIN;\nSELECT c.* FROM child AS c\nWHERE c.parent_id IS NOT NULL\n  AND NOT EXISTS (SELECT 1 FROM parent AS p WHERE p.id = c.parent_id);\nDELETE FROM child AS c\nWHERE c.parent_id IS NOT NULL\n  AND NOT EXISTS (SELECT 1 FROM parent AS p WHERE p.id = c.parent_id)\nRETURNING c.*;\nROLLBACK;",
+    "language": "sql",
+    "pitfalls": [
+      "Using NOT IN when the subquery can contain nulls.",
+      "Deleting children with intentionally unassigned parent_id values."
+    ],
+    "followups": [
+      "Study extension: repair missing parents instead of deleting children.",
+      "Study extension: validate a foreign key after remediation."
+    ],
+    "sourceUrl": "https://www.postgresql.org/docs/current/functions-subquery.html",
+    "provenance": {
+      "kind": "candidate-reported",
+      "scope": "reported-question",
+      "url": "https://www.linkedin.com/posts/rohit-honde-50a100185_sql-dataengineering-interviewquestions-activity-7347906057634988032-cgF3",
+      "author": "Rohit Honde",
+      "title": "Self-reported SQL interview question list",
+      "company": null,
+      "experience": null,
+      "role": null,
+      "accessedAt": "2026-11-18",
+      "note": "Self-reported question list; employer/interview context not stated. Self-reported interview account; not independently verified. Question paraphrased; answer independently written."
+    }
+  },
+  {
+    "id": "li-sql-b010",
+    "subject": "sql",
+    "topic": "Sampling",
+    "subtopic": "Approximate independent row sampling",
+    "title": "Ten-percent sample",
+    "difficulty": "Intermediate",
+    "type": "Coding",
+    "minutes": 10,
+    "prompt": "Sample approximately 10% of a large table.",
+    "answer": [
+      "PostgreSQL TABLESAMPLE BERNOULLI(10) independently includes each row with a ten percent probability. It provides an approximate sample fraction, so neither the row count nor the membership is fixed. REPEATABLE supplies a seed for repeatability when the table remains unchanged. This matches a statistical interpretation of a ten-percent row sample while making the approximation visible.",
+      "Study assumptions: events(id,payload) is a regular table and approximate size is acceptable. BERNOULLI scans the table; SYSTEM can sample pages more cheaply but can cluster the selected rows and inherit physical-layout bias. ORDER BY random() followed by a limit can produce an exact count but requires different work, including a count and potentially substantial sorting. Sampling happens before ordinary WHERE filtering, so ten percent of the base table followed by a rare filter can leave very few observations. Decide the sampling population and acceptable variance before choosing the method."
+    ],
+    "code": "-- PostgreSQL; Study assumptions: events(id bigint, payload text);\n-- approximate independent row inclusion is desired.\nSELECT *\nFROM events TABLESAMPLE BERNOULLI (10) REPEATABLE (42);",
+    "language": "sql",
+    "pitfalls": [
+      "Promising exactly ten percent of the rows from a probabilistic sample.",
+      "Assuming a page sample is identical to independent row sampling."
+    ],
+    "followups": [
+      "Study extension: select an exact sample size and compare cost.",
+      "Study extension: sample independently within each customer segment."
+    ],
+    "sourceUrl": "https://www.postgresql.org/docs/current/sql-select.html",
+    "provenance": {
+      "kind": "candidate-reported",
+      "scope": "reported-question",
+      "url": "https://www.linkedin.com/posts/rohit-honde-50a100185_sql-dataengineering-interviewquestions-activity-7347906057634988032-cgF3",
+      "author": "Rohit Honde",
+      "title": "Self-reported SQL interview question list",
+      "company": null,
+      "experience": null,
+      "role": null,
+      "accessedAt": "2026-11-18",
+      "note": "Self-reported question list; employer/interview context not stated. Self-reported interview account; not independently verified. Question paraphrased; answer independently written."
+    }
+  },
+  {
+    "id": "li-sql-b011",
+    "subject": "sql",
+    "topic": "String processing",
+    "subtopic": "Case-insensitive pattern matching",
+    "title": "Ignore letter case",
+    "difficulty": "Beginner",
+    "type": "Coding",
+    "minutes": 8,
+    "prompt": "Search text without case sensitivity.",
+    "answer": [
+      "In PostgreSQL, ILIKE performs case-insensitive pattern matching according to the applicable locale. A percent sign matches a sequence of characters and an underscore matches one character, so a pattern with percent signs on both sides searches for a substring. The example returns names containing the supplied study term regardless of case, while null names fail the predicate and are omitted.",
+      "Study assumptions: contacts(id,name) stores searchable text and the example term is the literal string alex. Case folding is not the same as accent folding, and locale-sensitive behavior should be tested with the actual language data. If search terms come from a user, bind them as values rather than interpolating SQL; also escape pattern metacharacters when the desired search is literal. A leading wildcard may limit the usefulness of an ordinary B-tree index. Choose indexing from the actual search operator and measured plan instead of assuming LOWER or ILIKE is automatically efficient."
+    ],
+    "code": "-- PostgreSQL; Study assumptions: contacts(id bigint PRIMARY KEY, name text);\n-- find the literal study term alex anywhere in the name.\nSELECT id, name\nFROM contacts\nWHERE name ILIKE '%alex%'\nORDER BY id;",
+    "language": "sql",
+    "pitfalls": [
+      "Treating case-insensitive matching as automatic accent-insensitive matching.",
+      "Allowing user percent or underscore characters to change a literal search."
+    ],
+    "followups": [
+      "Study extension: implement case-insensitive exact equality.",
+      "Study extension: inspect indexing for a large substring-search workload."
+    ],
+    "sourceUrl": "https://www.postgresql.org/docs/current/functions-matching.html",
+    "provenance": {
+      "kind": "candidate-reported",
+      "scope": "reported-question",
+      "url": "https://www.linkedin.com/posts/rohit-honde-50a100185_sql-dataengineering-interviewquestions-activity-7347906057634988032-cgF3",
+      "author": "Rohit Honde",
+      "title": "Self-reported SQL interview question list",
+      "company": null,
+      "experience": null,
+      "role": null,
+      "accessedAt": "2026-11-18",
+      "note": "Self-reported question list; employer/interview context not stated. Self-reported interview account; not independently verified. Question paraphrased; answer independently written."
+    }
+  },
+  {
+    "id": "li-sql-b012",
+    "subject": "sql",
+    "topic": "String processing",
+    "subtopic": "Delimited text expansion with ordinality",
+    "title": "Split comma values",
+    "difficulty": "Intermediate",
+    "type": "Coding",
+    "minutes": 10,
+    "prompt": "Expand comma-delimited values into ordered rows.",
+    "answer": [
+      "Convert the delimited field into an array and expand its elements with UNNEST. WITH ORDINALITY adds a one-based position, preserving enough information to reconstruct the original order. A lateral row source evaluates the expansion for each input row, so every emitted token stays associated with its source identifier. Trimming surrounding spaces is an independent normalization choice rather than part of delimiter recognition.",
+      "Study assumptions: inputs(id,csv) contains a simple comma-delimited format with no quoted fields or embedded commas; empty tokens are preserved, and null input contributes no tokens. This is not a complete CSV parser. An empty string produces an empty array in STRING_TO_ARRAY, so it also contributes no rows. If null or empty inputs must remain visible, use a left lateral join and define a sentinel or status field. Always order by id and ordinal position explicitly; a table result has no inherent display order."
+    ],
+    "code": "-- PostgreSQL; Study assumptions: inputs(id bigint PRIMARY KEY, csv text);\n-- simple commas, no CSV quoting; preserve interior empty fields.\nSELECT i.id, u.position, BTRIM(u.token) AS token\nFROM inputs AS i\nCROSS JOIN LATERAL UNNEST(STRING_TO_ARRAY(i.csv, ','))\n  WITH ORDINALITY AS u(token, position)\nORDER BY i.id, u.position;",
+    "language": "sql",
+    "pitfalls": [
+      "Using a delimiter split for quoted CSV containing embedded commas.",
+      "Losing token order after expansion."
+    ],
+    "followups": [
+      "Study extension: retain null and empty source rows with LEFT JOIN LATERAL.",
+      "Study extension: reject empty tokens rather than preserving them."
+    ],
+    "sourceUrl": "https://www.postgresql.org/docs/current/functions-array.html",
+    "provenance": {
+      "kind": "candidate-reported",
+      "scope": "reported-question",
+      "url": "https://www.linkedin.com/posts/rohit-honde-50a100185_sql-dataengineering-interviewquestions-activity-7347906057634988032-cgF3",
+      "author": "Rohit Honde",
+      "title": "Self-reported SQL interview question list",
+      "company": null,
+      "experience": null,
+      "role": null,
+      "accessedAt": "2026-11-18",
+      "note": "Self-reported question list; employer/interview context not stated. Self-reported interview account; not independently verified. Question paraphrased; answer independently written."
+    }
+  },
+  {
+    "id": "li-sql-b013",
+    "subject": "sql",
+    "topic": "Data warehousing",
+    "subtopic": "Versioning a dimension with effective intervals",
+    "title": "Track dimension history",
+    "difficulty": "Advanced",
+    "type": "Coding",
+    "minutes": 12,
+    "prompt": "Implement SCD Type 2.",
+    "answer": [
+      "Type 2 history preserves the previous attribute values instead of overwriting them. For each changed business key, close the current version at a chosen effective timestamp and insert a new current version beginning at the same instant. A surrogate key identifies each version, while the natural key identifies the continuing business entity. Use half-open validity intervals so a fact timestamp at the boundary matches only the new version.",
+      "Study assumptions: a single serialized writer processes one staged customer change, customer_dim uses a generated customer_sk, one current row per customer is enforced, and the incoming timestamp is later than the current valid_from. The example handles an existing changed customer; initial inserts and late-arriving changes need separate rules. IS DISTINCT FROM detects a change even when an address becomes null. A transaction makes closing and inserting atomic. Concurrent writers require serialization or a key-level locking strategy beyond this study example, because atomicity alone does not prevent duplicate logical versions."
+    ],
+    "code": "-- PostgreSQL; Study assumptions: customer_dim(customer_sk bigint GENERATED\n-- ALWAYS AS IDENTITY PRIMARY KEY, customer_id bigint, address text,\n-- valid_from timestamptz, valid_to timestamptz, is_current boolean).\n-- One serialized writer, existing customer 7, one current version, later time.\nBEGIN;\nWITH closed AS (\n  UPDATE customer_dim\n  SET valid_to = TIMESTAMPTZ '2026-11-18 00:00:00+00', is_current = false\n  WHERE customer_id = 7 AND is_current\n    AND address IS DISTINCT FROM 'New address'\n    AND valid_from < TIMESTAMPTZ '2026-11-18 00:00:00+00'\n  RETURNING customer_id\n)\nINSERT INTO customer_dim(customer_id,address,valid_from,valid_to,is_current)\nSELECT customer_id, 'New address', TIMESTAMPTZ '2026-11-18 00:00:00+00',\n       NULL, true\nFROM closed\nRETURNING *;\nROLLBACK;",
+    "language": "sql",
+    "pitfalls": [
+      "Updating the current address in place and losing prior values.",
+      "Assuming one transaction by itself serializes competing writers."
+    ],
+    "followups": [
+      "Study extension: handle the first version of a new customer.",
+      "Study extension: handle an event that arrives inside a historical interval."
+    ],
+    "sourceUrl": "https://www.postgresql.org/docs/current/queries-with.html",
+    "provenance": {
+      "kind": "candidate-reported",
+      "scope": "reported-question",
+      "url": "https://www.linkedin.com/posts/rohit-honde-50a100185_sql-dataengineering-interviewquestions-activity-7347906057634988032-cgF3",
+      "author": "Rohit Honde",
+      "title": "Self-reported SQL interview question list",
+      "company": null,
+      "experience": null,
+      "role": null,
+      "accessedAt": "2026-11-18",
+      "note": "Self-reported question list; employer/interview context not stated. Self-reported interview account; not independently verified. Question paraphrased; answer independently written."
+    }
+  },
+  {
+    "id": "li-sql-b014",
+    "subject": "sql",
+    "topic": "Data quality",
+    "subtopic": "Transactional audit triggers and null-safe change detection",
+    "title": "Audit sensitive changes",
+    "difficulty": "Advanced",
+    "type": "Coding",
+    "minutes": 12,
+    "prompt": "Record updates to salary and status.",
+    "answer": [
+      "An AFTER UPDATE row trigger can compare the old and new sensitive values and append an audit record when either actually changes. IS DISTINCT FROM treats null as a comparable missing value, so null-to-value and value-to-null transitions are recorded. Merely listing salary or status in the SET clause should not generate a change event when the stored values remain equal. Capture the before and after values so the audit explains what changed.",
+      "Study assumptions: employees(id,salary,status) exists and salary_audit is a dedicated append-only table. The example creates its audit objects inside a transaction and rolls them back after demonstration. Ordinary audit inserts participate in the same transaction as the update: a rolled-back employee change leaves no committed audit event. That is useful for committed-data history but does not record failed attempts. Restrict audit-table privileges in a real design and decide whether current_user represents the human actor or only an application's shared database login."
+    ],
+    "code": "-- PostgreSQL; Study assumptions: employees(id bigint PRIMARY KEY,\n-- salary numeric, status text). Dedicated audit object names are unused.\nBEGIN;\nCREATE TABLE salary_audit (\n  employee_id bigint, old_salary numeric, new_salary numeric,\n  old_status text, new_status text, changed_at timestamptz, changed_by text\n);\nCREATE FUNCTION audit_sensitive_change() RETURNS trigger LANGUAGE plpgsql AS $$\nBEGIN\n  IF OLD.salary IS DISTINCT FROM NEW.salary\n     OR OLD.status IS DISTINCT FROM NEW.status THEN\n    INSERT INTO salary_audit\n    VALUES (NEW.id, OLD.salary, NEW.salary, OLD.status, NEW.status,\n            clock_timestamp(), current_user);\n  END IF;\n  RETURN NEW;\nEND;\n$$;\nCREATE TRIGGER sensitive_change_audit\nAFTER UPDATE ON employees\nFOR EACH ROW EXECUTE FUNCTION audit_sensitive_change();\nUPDATE employees SET status = 'active' WHERE id = 1;\nSELECT * FROM salary_audit;\nROLLBACK;",
+    "language": "sql",
+    "pitfalls": [
+      "Comparing old and new nullable values using <> and missing null transitions.",
+      "Claiming a transactional trigger preserves evidence of rolled-back updates."
+    ],
+    "followups": [
+      "Study extension: capture INSERT and DELETE operations with appropriate OLD/NEW handling.",
+      "Study extension: pass an authenticated application actor into the audit context."
+    ],
+    "sourceUrl": "https://www.postgresql.org/docs/current/plpgsql-trigger.html",
+    "provenance": {
+      "kind": "candidate-reported",
+      "scope": "reported-question",
+      "url": "https://www.linkedin.com/posts/rohit-honde-50a100185_sql-dataengineering-interviewquestions-activity-7347906057634988032-cgF3",
+      "author": "Rohit Honde",
+      "title": "Self-reported SQL interview question list",
+      "company": null,
+      "experience": null,
+      "role": null,
+      "accessedAt": "2026-11-18",
+      "note": "Self-reported question list; employer/interview context not stated. Self-reported interview account; not independently verified. Question paraphrased; answer independently written."
+    }
+  },
+  {
+    "id": "li-sql-b015",
+    "subject": "sql",
+    "topic": "Recursive queries",
+    "subtopic": "Parent-child traversal with a cycle guard",
+    "title": "Traverse a hierarchy",
+    "difficulty": "Advanced",
+    "type": "Coding",
+    "minutes": 12,
+    "prompt": "Return a parent-child hierarchy using SQL.",
+    "answer": [
+      "A recursive CTE begins with the root rows and repeatedly joins the current frontier to its children. Carry a depth counter and an array of visited identifiers along each path. The array supports explicit output ordering and prevents revisiting a node already on that path. An ordinary self-join reaches only a fixed number of levels, whereas recursion continues until no further eligible child rows remain.",
+      "Study assumptions: nodes(id,parent_id,name) has a unique integer id, null parent_id identifies a root, and the desired result is the forest reachable from those roots. The cycle guard prevents repeated traversal, but a disconnected cycle has no root and will not appear in this output. That case requires a separate cycle-detection query rather than assuming traversal proves data integrity. Path ordering is used only to present the result; do not rely on the database's internal evaluation order. Consider a depth limit and appropriate parent_id indexing for very large hierarchies."
+    ],
+    "code": "-- PostgreSQL; Study assumptions: nodes(id integer PRIMARY KEY,\n-- parent_id integer, name text); traverse every null-parent root.\nWITH RECURSIVE tree AS (\n  SELECT id, parent_id, name, 0 AS depth, ARRAY[id] AS path\n  FROM nodes WHERE parent_id IS NULL\n  UNION ALL\n  SELECT n.id, n.parent_id, n.name, t.depth + 1, t.path || n.id\n  FROM tree AS t\n  JOIN nodes AS n ON n.parent_id = t.id\n  WHERE NOT n.id = ANY(t.path)\n)\nSELECT id, parent_id, name, depth, path\nFROM tree\nORDER BY path;",
+    "language": "sql",
+    "pitfalls": [
+      "Expecting a single self-join to traverse arbitrary depth.",
+      "Assuming root-based traversal detects disconnected cycles."
+    ],
+    "followups": [
+      "Study extension: traverse ancestors of a selected node.",
+      "Study extension: report cycles separately with their full path."
+    ],
+    "sourceUrl": "https://www.postgresql.org/docs/current/queries-with.html",
+    "provenance": {
+      "kind": "candidate-reported",
+      "scope": "reported-question",
+      "url": "https://www.linkedin.com/posts/rohit-honde-50a100185_sql-dataengineering-interviewquestions-activity-7347906057634988032-cgF3",
+      "author": "Rohit Honde",
+      "title": "Self-reported SQL interview question list",
+      "company": null,
+      "experience": null,
+      "role": null,
+      "accessedAt": "2026-11-18",
+      "note": "Self-reported question list; employer/interview context not stated. Self-reported interview account; not independently verified. Question paraphrased; answer independently written."
+    }
+  },
+  {
+    "id": "li-sql-b016",
+    "subject": "sql",
+    "topic": "Joins",
+    "subtopic": "PostgreSQL lateral equivalents of APPLY",
+    "title": "Correlated row sources",
+    "difficulty": "Intermediate",
+    "type": "Coding",
+    "minutes": 10,
+    "prompt": "Translate CROSS APPLY and OUTER APPLY into PostgreSQL.",
+    "answer": [
+      "A lateral subquery may reference columns from the row source to its left. CROSS JOIN LATERAL has the row-preserving behavior of SQL Server CROSS APPLY: an input row disappears when its correlated subquery produces no rows. LEFT JOIN LATERAL with ON TRUE corresponds to OUTER APPLY, keeping the left row with null right-side values when the correlated subquery is empty. PostgreSQL uses these lateral forms rather than the APPLY keywords.",
+      "Study assumptions: customers(id) and orders(id,customer_id,ordered_at) exist and the illustrative task returns each customer's latest order. The order ID breaks equal timestamps, while NULLS LAST puts unknown timestamps after known ones. LIMIT applies separately for each customer because the subquery is correlated. The left lateral version includes customers with no order; switching to CROSS JOIN LATERAL omits them. Although the example chooses one row, a lateral source can emit several rows and multiply each left row accordingly, just like an ordinary join."
+    ],
+    "code": "-- PostgreSQL; Study assumptions: customers(id bigint PRIMARY KEY),\n-- orders(id bigint PRIMARY KEY, customer_id bigint, ordered_at timestamptz).\nSELECT c.id AS customer_id, recent.id AS order_id, recent.ordered_at\nFROM customers AS c\nLEFT JOIN LATERAL (\n  SELECT o.id, o.ordered_at FROM orders AS o\n  WHERE o.customer_id = c.id\n  ORDER BY o.ordered_at DESC NULLS LAST, o.id DESC\n  LIMIT 1\n) AS recent ON true\nORDER BY c.id;\n-- Use CROSS JOIN LATERAL (...) AS recent to omit customers with no orders.",
+    "language": "sql",
+    "pitfalls": [
+      "Assuming APPLY is portable PostgreSQL syntax.",
+      "Placing LIMIT outside the correlated query and limiting the entire report."
+    ],
+    "followups": [
+      "Study extension: return the latest three orders per customer.",
+      "Study extension: explain a lateral table-valued function that emits no rows."
+    ],
+    "sourceUrl": "https://www.postgresql.org/docs/current/queries-table-expressions.html",
+    "provenance": {
+      "kind": "candidate-reported",
+      "scope": "reported-question",
+      "url": "https://www.linkedin.com/posts/rohit-honde-50a100185_sql-dataengineering-interviewquestions-activity-7347906057634988032-cgF3",
+      "author": "Rohit Honde",
+      "title": "Self-reported SQL interview question list",
+      "company": null,
+      "experience": null,
+      "role": null,
+      "accessedAt": "2026-11-18",
+      "note": "Self-reported question list; employer/interview context not stated. Self-reported interview account; not independently verified. Question paraphrased; answer independently written."
+    }
+  },
+  {
+    "id": "li-sql-b017",
+    "subject": "sql",
+    "topic": "Data modification",
+    "subtopic": "Joined updates with a unique source mapping",
+    "title": "Update from another table",
+    "difficulty": "Intermediate",
+    "type": "Coding",
+    "minutes": 10,
+    "prompt": "Apply staged values to matching target rows.",
+    "answer": [
+      "PostgreSQL UPDATE ... FROM joins a target table to another row source and assigns values from the matched source row. The join predicate determines which target records are eligible, while an additional IS DISTINCT FROM predicate avoids rewriting rows whose value already matches. RETURNING provides a concrete list of changed target identifiers and their new values. Previewing the same join with SELECT is helpful before applying it to business data.",
+      "Study assumptions: products(id,price) is the target and staged_prices(product_id,price) has at most one row per product. This uniqueness is essential: if a target row matches several source rows, which value is chosen is not a reliable business rule. Deduplicate or reject conflicting stage data before the update. Products missing from staging remain unchanged, and staged IDs absent from the target are not inserted. The example uses a transaction with ROLLBACK; an actual synchronization may need separate insert and deletion policies."
+    ],
+    "code": "-- PostgreSQL; Study assumptions: products(id bigint PRIMARY KEY, price numeric),\n-- staged_prices(product_id bigint PRIMARY KEY, price numeric).\nBEGIN;\nUPDATE products AS p\nSET price = s.price\nFROM staged_prices AS s\nWHERE p.id = s.product_id AND p.price IS DISTINCT FROM s.price\nRETURNING p.id, p.price;\nROLLBACK;",
+    "language": "sql",
+    "pitfalls": [
+      "Allowing several staging rows to provide competing values for one target.",
+      "Expecting UPDATE FROM to insert missing target rows."
+    ],
+    "followups": [
+      "Study extension: reject conflicting source keys before updating.",
+      "Study extension: combine insertion and updating with an explicit upsert policy."
+    ],
+    "sourceUrl": "https://www.postgresql.org/docs/current/sql-update.html",
+    "provenance": {
+      "kind": "candidate-reported",
+      "scope": "reported-topic",
+      "url": "https://www.linkedin.com/posts/rohit-honde-50a100185_sql-dataengineering-interviewquestions-activity-7333851408275779584-6KQR",
+      "author": "Rohit Honde",
+      "title": "Self-reported SQL interview question list",
+      "company": null,
+      "experience": null,
+      "role": null,
+      "accessedAt": "2026-11-18",
+      "note": "Self-reported question list; employer/interview context not stated. Self-reported interview account; not independently verified. Question paraphrased; answer independently written."
+    }
+  },
+  {
+    "id": "li-sql-b018",
+    "subject": "sql",
+    "topic": "Data modification",
+    "subtopic": "Position-based deletion in a deterministic order",
+    "title": "Delete every nth row",
+    "difficulty": "Intermediate",
+    "type": "Coding",
+    "minutes": 10,
+    "prompt": "Delete every nth ordered row. Study assumptions: n=3; order by unique ID.",
+    "answer": [
+      "Rows do not have an intrinsic first, second, or third position, so begin by defining a stable total order. ROW_NUMBER over the unique ID gives the positions for this snapshot. Delete rows whose position is divisible by n by joining their identifiers back to the target table. This removes every third row in the chosen order, which is different from removing identifiers divisible by three when identifiers contain gaps.",
+      "Study assumptions: items(id,payload) has a unique identifier, n is the positive integer three, and no concurrent writes change the ordering population during the exercise. The example rolls back and displays affected rows with RETURNING. A production cleanup should confirm whether positions are computed once or repeatedly in batches: recomputing after each batch shifts positions and can delete a different set. The sort and full numbering can be expensive on a large table, so verify the execution plan and the intended scope before applying this pattern."
+    ],
+    "code": "-- PostgreSQL; Study assumptions: items(id bigint PRIMARY KEY, payload text);\n-- delete positions 3,6,9,... in ascending ID order.\nBEGIN;\nWITH numbered AS (\n  SELECT id, ROW_NUMBER() OVER (ORDER BY id) AS position FROM items\n)\nDELETE FROM items AS i\nUSING numbered AS n\nWHERE i.id = n.id AND n.position % 3 = 0\nRETURNING i.*;\nROLLBACK;",
+    "language": "sql",
+    "pitfalls": [
+      "Using id % n when the requirement concerns row positions and IDs have gaps.",
+      "Recomputing positions after each deletion batch and changing the target set."
+    ],
+    "followups": [
+      "Study extension: accept a validated positive n parameter.",
+      "Study extension: preview the selected IDs under a stable transaction snapshot."
+    ],
+    "sourceUrl": "https://www.postgresql.org/docs/current/sql-delete.html",
+    "provenance": {
+      "kind": "candidate-reported",
+      "scope": "reported-question",
+      "url": "https://www.linkedin.com/posts/rohit-honde-50a100185_sql-dataengineering-interviewquestions-activity-7333851408275779584-6KQR",
+      "author": "Rohit Honde",
+      "title": "Self-reported SQL interview question list",
+      "company": null,
+      "experience": null,
+      "role": null,
+      "accessedAt": "2026-11-18",
+      "note": "Self-reported question list; employer/interview context not stated. Self-reported interview account; not independently verified. Question paraphrased; answer independently written."
+    }
+  },
+  {
+    "id": "li-sql-b019",
+    "subject": "sql",
+    "topic": "Data reshaping",
+    "subtopic": "Unpivot through a lateral VALUES source",
+    "title": "Columns into rows",
+    "difficulty": "Intermediate",
+    "type": "Coding",
+    "minutes": 10,
+    "prompt": "Unpivot fixed measure columns into labeled rows.",
+    "answer": [
+      "Construct a small VALUES row source containing one label and one measure for every input column to be unpivoted. A lateral join lets those rows refer to the current input record. This converts each wide input row into several labeled output rows without vendor-specific UNPIVOT syntax. Unlike a pivot, this transformation expands the row count rather than aggregating several transactions into one report cell.",
+      "Study assumptions: metrics(entity_id,q1,q2,q3) contains three numeric measures, and null measures must remain visible in the long-form result. Every entity therefore yields three rows, including a quarter whose value is unknown. Add an explicit WHERE predicate only if dropping unknown measurements is a requirement. The VALUES columns must have compatible types; cast them when heterogeneous source types need a common representation. Preserve entity identifiers and period labels so a later consumer can recover the original relationship and distinguish missing values from absent records."
+    ],
+    "code": "-- PostgreSQL; Study assumptions: metrics(entity_id integer PRIMARY KEY,\n-- q1 numeric, q2 numeric, q3 numeric); preserve null measures.\nSELECT m.entity_id, v.quarter, v.amount\nFROM metrics AS m\nCROSS JOIN LATERAL (VALUES\n  (1, m.q1), (2, m.q2), (3, m.q3)\n) AS v(quarter, amount)\nORDER BY m.entity_id, v.quarter;",
+    "language": "sql",
+    "pitfalls": [
+      "Dropping null measures unintentionally during the transformation.",
+      "Combining incompatible measure types without an explicit target type."
+    ],
+    "followups": [
+      "Study extension: unpivot heterogeneous values into text with a type label.",
+      "Study extension: prove that each source row produces three output rows."
+    ],
+    "sourceUrl": "https://www.postgresql.org/docs/current/queries-table-expressions.html",
+    "provenance": {
+      "kind": "candidate-reported",
+      "scope": "reported-question",
+      "url": "https://www.linkedin.com/posts/rohit-honde-50a100185_sql-dataengineering-interviewquestions-activity-7333851408275779584-6KQR",
+      "author": "Rohit Honde",
+      "title": "Self-reported SQL interview question list",
+      "company": null,
+      "experience": null,
+      "role": null,
+      "accessedAt": "2026-11-18",
+      "note": "Self-reported question list; employer/interview context not stated. Self-reported interview account; not independently verified. Question paraphrased; answer independently written."
+    }
+  },
+  {
+    "id": "li-sql-b020",
+    "subject": "sql",
+    "topic": "Recursive queries",
+    "subtopic": "Cycle detection from every possible starting node",
+    "title": "Find hierarchy cycles",
+    "difficulty": "Advanced",
+    "type": "Coding",
+    "minutes": 12,
+    "prompt": "Detect circular parent references.",
+    "answer": [
+      "Start a recursive walk from every node, following each node's parent pointer and carrying the identifiers already visited. If the next parent is already in that path, flag the row as cyclic and stop expanding that path. Starting at every node is important because a cycle disconnected from all roots would be missed by an ordinary top-down traversal. A self-parent reference is simply a cycle discovered after one step.",
+      "Study assumptions: nodes(id,parent_id) has unique non-null integer IDs, each node has at most one parent, and null parent_id ends the chain. The output lists starting nodes whose ancestor chain reaches a cycle, which includes descendants attached to a cycle as well as its actual members. This distinction should be explained rather than labeling every result as a cycle member. Broken parent references also end a walk but are a separate integrity error. Path storage and repeated walks can be costly, so large graphs may need a more specialized validation strategy."
+    ],
+    "code": "-- PostgreSQL; Study assumptions: nodes(id integer PRIMARY KEY, parent_id integer);\n-- report starts whose ancestor chain reaches a repeated ID.\nWITH RECURSIVE walk AS (\n  SELECT id AS start_id, id, parent_id, ARRAY[id] AS path, false AS is_cycle\n  FROM nodes\n  UNION ALL\n  SELECT w.start_id, n.id, n.parent_id, w.path || n.id,\n         n.id = ANY(w.path)\n  FROM walk AS w\n  JOIN nodes AS n ON n.id = w.parent_id\n  WHERE NOT w.is_cycle\n)\nSELECT DISTINCT start_id\nFROM walk WHERE is_cycle\nORDER BY start_id;",
+    "language": "sql",
+    "pitfalls": [
+      "Starting only at roots and missing a disconnected cycle.",
+      "Confusing nodes that lead into a cycle with the cycle's actual members."
+    ],
+    "followups": [
+      "Study extension: return a canonical representation of each unique cycle.",
+      "Study extension: reject cycles when changing a parent pointer."
+    ],
+    "sourceUrl": "https://www.postgresql.org/docs/current/queries-with.html",
+    "provenance": {
+      "kind": "candidate-reported",
+      "scope": "reported-question",
+      "url": "https://www.linkedin.com/posts/rohit-honde-50a100185_sql-dataengineering-interviewquestions-activity-7333851408275779584-6KQR",
+      "author": "Rohit Honde",
+      "title": "Self-reported SQL interview question list",
+      "company": null,
+      "experience": null,
+      "role": null,
+      "accessedAt": "2026-11-18",
+      "note": "Self-reported question list; employer/interview context not stated. Self-reported interview account; not independently verified. Question paraphrased; answer independently written."
+    }
+  },
+  {
+    "id": "li-sql-b021",
+    "subject": "sql",
+    "topic": "Aggregation",
+    "subtopic": "Multiple dimensions define the result grain",
+    "title": "Group on two dimensions",
+    "difficulty": "Beginner",
+    "type": "Coding",
+    "minutes": 8,
+    "prompt": "Aggregate using several grouping columns.",
+    "answer": [
+      "GROUP BY with several columns produces one group for each distinct combination, rather than grouping by the first column and then independently grouping by the second. Every selected non-aggregated dimension should describe that same output grain. Summing the measure within region and category therefore produces a region-category report. Grouping on category alone would merge the same category across regions and answer a broader question.",
+      "Study assumptions: sales(region,category,amount) has one transaction per row and amount is numeric. Null dimension values form groups too, so two transactions with the same region and a null category contribute to the same combination. SUM ignores unknown measures; the query also exposes the contributing row count to help diagnose sparse data. Subtotals are not generated automatically by listing two grouping columns. Use GROUPING SETS or ROLLUP when both detailed combinations and higher-level totals are required, and label subtotal rows distinctly from genuine null dimensions."
+    ],
+    "code": "-- PostgreSQL; Study assumptions: sales(region text, category text, amount numeric),\n-- one transaction per row; output grain is region plus category.\nSELECT region, category, COUNT(*) AS transactions, SUM(amount) AS revenue\nFROM sales\nGROUP BY region, category\nORDER BY region, category;",
+    "language": "sql",
+    "pitfalls": [
+      "Assuming multiple GROUP BY columns create independent subtotal reports.",
+      "Selecting another dimension that changes or violates the chosen output grain."
+    ],
+    "followups": [
+      "Study extension: add region and grand totals with GROUPING SETS.",
+      "Study extension: distinguish null categories from subtotal rows."
+    ],
+    "sourceUrl": "https://www.postgresql.org/docs/current/queries-table-expressions.html",
+    "provenance": {
+      "kind": "candidate-reported",
+      "scope": "reported-topic",
+      "url": "https://www.linkedin.com/posts/rohit-honde-50a100185_sql-dataengineering-interviewquestions-activity-7318826875798056960-9V_c",
+      "author": "Rohit Honde",
+      "title": "Self-reported SQL interview question list",
+      "company": null,
+      "experience": null,
+      "role": null,
+      "accessedAt": "2026-11-18",
+      "note": "Self-reported question list; employer/interview context not stated. Self-reported interview account; not independently verified. Question paraphrased; answer independently written."
+    }
+  },
+  {
+    "id": "li-sql-b022",
+    "subject": "sql",
+    "topic": "Dynamic SQL",
+    "subtopic": "Quoting identifiers separately from bound data values",
+    "title": "Safe dynamic filtering",
+    "difficulty": "Advanced",
+    "type": "Coding",
+    "minutes": 12,
+    "prompt": "Construct dynamic SQL safely.",
+    "answer": [
+      "Separate SQL identifiers from data values. In PostgreSQL PL/pgSQL, format with %I quotes an identifier, while EXECUTE ... USING binds a data value in the generated command. A table or column name cannot be supplied through a value placeholder because it changes the statement's structure rather than supplying a literal. This separation avoids both syntax failures on unusual names and injection through a value.",
+      "Study assumptions: a temporary helper counts rows in an allowed table whose allowed numeric column exceeds a supplied threshold. The demonstration uses a regclass table argument and an explicit table-and-column allowlist; correct quoting alone does not grant permission to query arbitrary objects. A real application should enforce its permitted objects and use least-privilege execution. Avoid concatenating an untrusted condition fragment into the SQL text. Dynamic commands are planned when executed, so assess repeated planning cost when this approach is used inside a loop."
+    ],
+    "code": "-- PostgreSQL; Study assumptions: public.sales(amount numeric) exists.\n-- Only that table and column are permitted by this demonstration.\nCREATE OR REPLACE FUNCTION pg_temp.count_above(\n  p_table regclass, p_column text, p_min numeric\n) RETURNS bigint LANGUAGE plpgsql AS $$\nDECLARE result_count bigint;\nBEGIN\n  IF p_table <> 'public.sales'::regclass OR p_column <> 'amount' THEN\n    RAISE EXCEPTION 'Unsupported table or column';\n  END IF;\n  EXECUTE format('SELECT count(*) FROM %s WHERE %I > $1', p_table, p_column)\n    INTO result_count USING p_min;\n  RETURN result_count;\nEND;\n$$;\nSELECT pg_temp.count_above('public.sales'::regclass, 'amount', 100);",
+    "language": "sql",
+    "pitfalls": [
+      "Trying to bind a table name with a value placeholder.",
+      "Treating safe identifier quoting as authorization to query any table."
+    ],
+    "followups": [
+      "Study extension: allow several approved columns with distinct types.",
+      "Study extension: compare static SQL and dynamic SQL planning behavior."
+    ],
+    "sourceUrl": "https://www.postgresql.org/docs/current/plpgsql-statements.html",
+    "provenance": {
+      "kind": "candidate-reported",
+      "scope": "reported-topic",
+      "url": "https://www.linkedin.com/posts/rohit-honde-50a100185_sql-dataengineering-interviewquestions-activity-7318826875798056960-9V_c",
+      "author": "Rohit Honde",
+      "title": "Self-reported SQL interview question list",
+      "company": null,
+      "experience": null,
+      "role": null,
+      "accessedAt": "2026-11-18",
+      "note": "Self-reported question list; employer/interview context not stated. Self-reported interview account; not independently verified. Question paraphrased; answer independently written."
+    }
+  },
+  {
+    "id": "li-sql-b023",
+    "subject": "sql",
+    "topic": "Pagination",
+    "subtopic": "Stable ordering and keyset continuation",
+    "title": "Page through records",
+    "difficulty": "Intermediate",
+    "type": "Coding",
+    "minutes": 10,
+    "prompt": "Implement deterministic SQL pagination.",
+    "answer": [
+      "Pagination requires a total order. Keyset pagination carries the last seen sort key into the next query and selects rows strictly after it in the chosen order. For descending timestamps, compare the pair of timestamp and unique ID with the previous page's final pair using less than. The unique ID resolves equal timestamps so records are neither skipped nor repeated merely because their timestamps tie.",
+      "Study assumptions: feed(id,created_at,body) uses a unique ID, created_at is non-null and immutable during navigation, and the example cursor belongs to the previous page. The first page omits the cursor predicate. LIMIT/OFFSET is simpler for small numbered pages, but large offsets require skipping preceding rows and concurrent changes can shift positions. Keysets also do not promise a fixed historical snapshot: newly inserted rows can change the live dataset. Use an appropriate transaction snapshot or a fixed cutoff when a consistent export is required."
+    ],
+    "code": "-- PostgreSQL; Study assumptions: feed(id bigint PRIMARY KEY,\n-- created_at timestamptz NOT NULL, body text); descending cursor order.\nSELECT id, created_at, body\nFROM feed\nWHERE (created_at, id) < (TIMESTAMPTZ '2026-11-18 10:00:00+00', 500::bigint)\nORDER BY created_at DESC, id DESC\nLIMIT 20;",
+    "language": "sql",
+    "pitfalls": [
+      "Ordering by a non-unique timestamp and losing deterministic page boundaries.",
+      "Promising a consistent export from independent pages over changing data."
+    ],
+    "followups": [
+      "Study extension: explain OFFSET pagination for small numbered results.",
+      "Study extension: choose a supporting composite index."
+    ],
+    "sourceUrl": "https://www.postgresql.org/docs/current/queries-limit.html",
+    "provenance": {
+      "kind": "candidate-reported",
+      "scope": "reported-topic",
+      "url": "https://www.linkedin.com/posts/rohit-honde-50a100185_sql-dataengineering-interviewquestions-activity-7318826875798056960-9V_c",
+      "author": "Rohit Honde",
+      "title": "Self-reported SQL interview question list",
+      "company": null,
+      "experience": null,
+      "role": null,
+      "accessedAt": "2026-11-18",
+      "note": "Self-reported question list; employer/interview context not stated. Self-reported interview account; not independently verified. Question paraphrased; answer independently written."
+    }
+  },
+  {
+    "id": "li-sql-b024",
+    "subject": "sql",
+    "topic": "Data modification",
+    "subtopic": "Logical deletion and active-row uniqueness",
+    "title": "Implement soft deletion",
+    "difficulty": "Intermediate",
+    "type": "Coding",
+    "minutes": 10,
+    "prompt": "Mark rows deleted while retaining their history.",
+    "answer": [
+      "A soft delete records a deletion marker instead of removing the row. A nullable deleted_at timestamp describes both whether deletion occurred and when it occurred. Every active-data access path must apply the intended predicate, often through a view or a consistent repository abstraction. Repeating the update can preserve the first deletion time with COALESCE, making the operation idempotent for an already-deleted record.",
+      "Study assumptions: users(id,email,deleted_at) retains rows for business history, and email uniqueness is required only among active users. A partial unique index on email with deleted_at IS NULL enforces that policy while allowing a deleted address to be reused. Restoring an old row may then conflict with a newer active row, so restoration needs an explicit rule. Soft deletion does not automatically change child rows or satisfy permanent-erasure requirements. The demonstration rolls back, and existing conflicting active addresses must be repaired before the index can be created."
+    ],
+    "code": "-- PostgreSQL; Study assumptions: users(id bigint PRIMARY KEY,\n-- email text NOT NULL, deleted_at timestamptz); active emails are unique.\nBEGIN;\nCREATE UNIQUE INDEX users_active_email_study_idx\n  ON users(email) WHERE deleted_at IS NULL;\nUPDATE users\nSET deleted_at = COALESCE(deleted_at, CURRENT_TIMESTAMP)\nWHERE id = 7\nRETURNING id, deleted_at;\nSELECT id, email FROM users WHERE deleted_at IS NULL ORDER BY id;\nROLLBACK;",
+    "language": "sql",
+    "pitfalls": [
+      "Forgetting the active-row predicate in one reporting or access path.",
+      "Assuming restoration cannot conflict with an email reused after deletion."
+    ],
+    "followups": [
+      "Study extension: define child-row behavior when a parent is soft deleted.",
+      "Study extension: implement restoration with an explicit uniqueness check."
+    ],
+    "sourceUrl": "https://www.postgresql.org/docs/current/indexes-partial.html",
+    "provenance": {
+      "kind": "candidate-reported",
+      "scope": "reported-topic",
+      "url": "https://www.linkedin.com/posts/rohit-honde-50a100185_sql-dataengineering-interviewquestions-activity-7318826875798056960-9V_c",
+      "author": "Rohit Honde",
+      "title": "Self-reported SQL interview question list",
+      "company": null,
+      "experience": null,
+      "role": null,
+      "accessedAt": "2026-11-18",
+      "note": "Self-reported question list; employer/interview context not stated. Self-reported interview account; not independently verified. Question paraphrased; answer independently written."
+    }
+  },
+  {
+    "id": "li-sql-b025",
+    "subject": "sql",
+    "topic": "Joins",
+    "subtopic": "Existence of a different row with equal pay",
+    "title": "Shared salary values",
+    "difficulty": "Intermediate",
+    "type": "Coding",
+    "minutes": 10,
+    "prompt": "Find employees sharing a salary.",
+    "answer": [
+      "Use a correlated EXISTS to ask whether another employee has the same salary. The inequality on the employee identifiers prevents each row from matching itself. EXISTS returns a Boolean condition rather than the matching rows, so an employee sharing pay with several colleagues still appears only once. This directly returns people, whereas grouping salaries with HAVING COUNT(*) > 1 first returns salary values.",
+      "Study assumptions: employees(id,name,salary) has a unique ID, and unknown salaries do not count as equal pay. Ordinary equality intentionally excludes nulls. If the interviewer wants nulls treated as a shared missing-value category, use IS NOT DISTINCT FROM and explain that this is not evidence of equal compensation. The comparison is exact numeric equality, without rounding or tolerance. Include employee identifiers as well as names to distinguish namesakes, and test a singleton salary, two equal salaries, a three-person group, and null inputs."
+    ],
+    "code": "-- PostgreSQL; Study assumptions: employees(id bigint PRIMARY KEY,\n-- name text, salary numeric); exclude unknown salaries.\nSELECT e.id, e.name, e.salary\nFROM employees AS e\nWHERE EXISTS (\n  SELECT 1 FROM employees AS peer\n  WHERE peer.salary = e.salary AND peer.id <> e.id\n)\nORDER BY e.salary, e.id;",
+    "language": "sql",
+    "pitfalls": [
+      "Forgetting to exclude the employee's own row.",
+      "Using a self-join that emits each employee once per matching peer."
+    ],
+    "followups": [
+      "Study extension: return each repeated salary and its employee count.",
+      "Study extension: restrict salary comparisons to the same department."
+    ],
+    "sourceUrl": "https://www.postgresql.org/docs/current/functions-subquery.html",
+    "provenance": {
+      "kind": "candidate-reported",
+      "scope": "reported-question",
+      "url": "https://www.linkedin.com/posts/rabi-sankar-mahata_i-thought-i-knew-sql-until-my-interviewer-activity-7390002172161114112-I-4I",
+      "author": "Rabi Sankar Mahata",
+      "title": "Self-reported SQL interview question list",
+      "company": null,
+      "experience": null,
+      "role": null,
+      "accessedAt": "2026-11-18",
+      "note": "Self-reported question list; employer/interview context not stated. Self-reported interview account; not independently verified. Question paraphrased; answer independently written."
+    }
+  },
+  {
+    "id": "li-sql-b026",
+    "subject": "sql",
+    "topic": "Aggregation",
+    "subtopic": "Frequency counts and tied modes",
+    "title": "Most frequent values",
+    "difficulty": "Intermediate",
+    "type": "Coding",
+    "minutes": 10,
+    "prompt": "Calculate the mode, retaining ties.",
+    "answer": [
+      "The mode is the value occurring most frequently, so first group observations by value and count their frequencies. Compare each frequency with the maximum frequency in that grouped result. Keeping every group at that maximum returns all modes when several values tie. This makes the tie policy explicit instead of arbitrarily choosing whichever value an implementation happens to encounter first.",
+      "Study assumptions: observations(value) contains integer measurements, null observations are excluded, and all equally frequent maxima are returned. If the input has no known values, both the grouped relation and the result are empty. PostgreSQL also provides an ordered-set mode aggregate, but a grouped solution is useful when the required answer includes tied modes and their counts. Clarify whether case variants or rounded numeric values should be combined before grouping, because normalization changes the frequency distribution and therefore can change which value is modal."
+    ],
+    "code": "-- PostgreSQL; Study assumptions: observations(value integer);\n-- ignore NULL and retain all tied modes.\nWITH frequencies AS (\n  SELECT value, COUNT(*) AS frequency\n  FROM observations\n  WHERE value IS NOT NULL\n  GROUP BY value\n)\nSELECT value, frequency\nFROM frequencies\nWHERE frequency = (SELECT MAX(frequency) FROM frequencies)\nORDER BY value;",
+    "language": "sql",
+    "pitfalls": [
+      "Silently choosing one mode when the frequency maximum is tied.",
+      "Counting unknown measurements as an ordinary observed value without agreement."
+    ],
+    "followups": [
+      "Study extension: return a single mode under a deterministic tie policy.",
+      "Study extension: calculate a separate frequency distribution for each region."
+    ],
+    "sourceUrl": "https://www.postgresql.org/docs/current/functions-aggregate.html",
+    "provenance": {
+      "kind": "candidate-reported",
+      "scope": "reported-question",
+      "url": "https://www.linkedin.com/posts/rabi-sankar-mahata_i-thought-i-knew-sql-until-my-interviewer-activity-7390002172161114112-I-4I",
+      "author": "Rabi Sankar Mahata",
+      "title": "Self-reported SQL interview question list",
+      "company": null,
+      "experience": null,
+      "role": null,
+      "accessedAt": "2026-11-18",
+      "note": "Self-reported question list; employer/interview context not stated. Self-reported interview account; not independently verified. Question paraphrased; answer independently written."
+    }
+  },
+  {
+    "id": "li-sql-b027",
+    "subject": "sql",
+    "topic": "Data warehousing",
+    "subtopic": "Overwriting current dimension attributes",
+    "title": "Overwrite dimension attributes",
+    "difficulty": "Intermediate",
+    "type": "Coding",
+    "minutes": 12,
+    "prompt": "Implement SCD Type 1.",
+    "answer": [
+      "Type 1 stores the latest known attribute values by overwriting the existing row. PostgreSQL INSERT ... ON CONFLICT DO UPDATE can insert a new business key or update an existing one in one statement when an appropriate uniqueness constraint exists. A change predicate avoids unnecessary updates for equal attribute values, including equal nulls. This approach intentionally preserves no previous address version in the dimension itself.",
+      "Study assumptions: customer_current(customer_id,address,updated_at) has a primary key on customer_id, and stage_customer has one authoritative row per customer. The source batch is already ordered and validated, so an older late-arriving record cannot overwrite a newer value. If source recency is not guaranteed, carry a source version or event timestamp and compare it in the update predicate. Type 1 suits correction or current-state requirements; it cannot answer historical attribute questions after a change unless another system retains that history. The demonstration rolls back its changes."
+    ],
+    "code": "-- PostgreSQL; Study assumptions: customer_current(customer_id bigint PRIMARY KEY,\n-- address text, updated_at timestamptz); stage_customer(customer_id bigint\n-- PRIMARY KEY, address text) contains authoritative current values.\nBEGIN;\nINSERT INTO customer_current(customer_id,address,updated_at)\nSELECT customer_id, address, CURRENT_TIMESTAMP FROM stage_customer\nON CONFLICT (customer_id) DO UPDATE\nSET address = EXCLUDED.address, updated_at = EXCLUDED.updated_at\nWHERE customer_current.address IS DISTINCT FROM EXCLUDED.address\nRETURNING *;\nROLLBACK;",
+    "language": "sql",
+    "pitfalls": [
+      "Using Type 1 when prior dimension values must remain queryable.",
+      "Allowing stale incoming records to overwrite more recent state."
+    ],
+    "followups": [
+      "Study extension: add source-version checks for out-of-order delivery.",
+      "Study extension: compare this overwrite with Type 2 effective-dated versions."
+    ],
+    "sourceUrl": "https://www.postgresql.org/docs/current/sql-insert.html",
+    "provenance": {
+      "kind": "candidate-reported",
+      "scope": "reported-question",
+      "url": "https://www.linkedin.com/posts/rabi-sankar-mahata_i-thought-i-knew-sql-until-my-interviewer-activity-7390002172161114112-I-4I",
+      "author": "Rabi Sankar Mahata",
+      "title": "Self-reported SQL interview question list",
+      "company": null,
+      "experience": null,
+      "role": null,
+      "accessedAt": "2026-11-18",
+      "note": "Self-reported question list; employer/interview context not stated. Self-reported interview account; not independently verified. Question paraphrased; answer independently written."
+    }
+  },
+  {
+    "id": "li-sql-b028",
+    "subject": "sql",
+    "topic": "Subqueries",
+    "subtopic": "Relational division with duplicate catalog entries",
+    "title": "Coverage of every project",
+    "difficulty": "Advanced",
+    "type": "Coding",
+    "minutes": 12,
+    "prompt": "Find employees assigned to every required project, despite duplicate project rows. Study assumptions: employees(id), assignments(emp_id,project_id), projects(project_id); ignore null catalog IDs.",
+    "answer": [
+      "Express the requirement as the absence of a missing required project: select an employee only when no project exists for which that employee lacks an assignment. The nested NOT EXISTS formulation naturally ignores duplicate catalog rows and duplicate assignments because it tests existence rather than counting joined rows. Restrict the requirement universe to the project catalog so assignments to unrelated projects cannot incorrectly compensate for a missing required one.",
+      "Study assumptions: employees provides the full candidate population, null project IDs are not requirements, and an empty requirement catalog qualifies every employee. That last result is the normal universal-quantification interpretation but should be confirmed. A count-based solution can also work by comparing distinct matched project IDs with distinct required IDs; simple COUNT on a duplicate-producing join is unsafe. The source's debate over duplicate handling illustrates why catalog uniqueness and the desired output should be discussed explicitly rather than assuming a sample proves the underlying data is unique."
+    ],
+    "code": "-- PostgreSQL; Study assumptions: employees(id bigint PRIMARY KEY),\n-- assignments(emp_id bigint, project_id integer), projects(project_id integer).\n-- Duplicate rows allowed; NULL catalog IDs are not requirements.\nSELECT e.id\nFROM employees AS e\nWHERE NOT EXISTS (\n  SELECT 1 FROM projects AS p\n  WHERE p.project_id IS NOT NULL\n    AND NOT EXISTS (\n      SELECT 1 FROM assignments AS a\n      WHERE a.emp_id = e.id AND a.project_id = p.project_id\n    )\n)\nORDER BY e.id;",
+    "language": "sql",
+    "pitfalls": [
+      "Counting joined rows and mistaking duplicate assignments for project coverage.",
+      "Counting unrelated projects toward the required catalog."
+    ],
+    "followups": [
+      "Study extension: implement a distinct-count version with the same empty-catalog behavior.",
+      "Study extension: list each employee's missing required projects."
+    ],
+    "sourceUrl": "https://www.postgresql.org/docs/current/functions-subquery.html",
+    "provenance": {
+      "kind": "candidate-reported",
+      "scope": "reported-question",
+      "url": "https://www.linkedin.com/posts/sai-kiran-434b7022b_sql-interviewexperience-dataengineering-activity-7351831705801936898-J-Q_",
+      "author": "Sai Kiran",
+      "title": "All-projects SQL interview question",
+      "company": null,
+      "experience": null,
+      "role": null,
+      "accessedAt": "2026-11-18",
+      "note": "Self-reported interview account; not independently verified. Question paraphrased; answer independently written."
+    }
+  },
+  {
+    "id": "li-sql-b029",
+    "subject": "sql",
+    "topic": "Joins",
+    "subtopic": "Counting direct reports who themselves manage people",
+    "title": "Managers of managers",
+    "difficulty": "Intermediate",
+    "type": "Coding",
+    "minutes": 10,
+    "prompt": "Return senior managers and the number of reporting managers. Study assumptions: employees(id,name,manager_id); a reporting manager must have at least one direct report.",
+    "answer": [
+      "First identify people who are managers by finding employee identifiers referenced as manager_id. Then join those manager rows to their own immediate manager and count them. Each qualifying reporting manager contributes once, regardless of how many employees report to that person. This avoids the multiplicative effect of joining all three hierarchy levels and counting the bottom-level employee rows.",
+      "Study assumptions: id is unique, manager_id refers to the immediate manager, and senior manager means any person with at least one direct report who manages others. It does not mean only a root executive whose own manager_id is null; the source leaves that interpretation open, so the study contract states it explicitly. Group by the senior identifier as well as name to avoid merging namesakes. An EXISTS-based manager test also avoids counting a manager repeatedly when that person has several reports. Arbitrary-depth descendant counts would require recursion and answer a different requirement."
+    ],
+    "code": "-- PostgreSQL; Study assumptions: employees(id bigint PRIMARY KEY,\n-- name text, manager_id bigint); senior means manager of any direct manager.\nWITH reporting_managers AS (\n  SELECT m.id, m.manager_id\n  FROM employees AS m\n  WHERE EXISTS (SELECT 1 FROM employees AS e WHERE e.manager_id = m.id)\n)\nSELECT senior.id, senior.name, COUNT(*) AS reporting_manager_count\nFROM reporting_managers AS m\nJOIN employees AS senior ON senior.id = m.manager_id\nGROUP BY senior.id, senior.name\nORDER BY senior.id;",
+    "language": "sql",
+    "pitfalls": [
+      "Counting bottom-level employees instead of distinct reporting managers.",
+      "Restricting senior managers to roots without clarifying the requirement."
+    ],
+    "followups": [
+      "Study extension: require the senior manager to have no manager.",
+      "Study extension: count managers at any depth below each senior manager."
+    ],
+    "sourceUrl": "https://www.postgresql.org/docs/current/queries-table-expressions.html",
+    "provenance": {
+      "kind": "candidate-reported",
+      "scope": "reported-question",
+      "url": "https://www.linkedin.com/posts/ankit-kumar-yadav_skills-sql-pyspark-activity-7374661222610341888-QKsb",
+      "author": "Ankit Yadav",
+      "title": "Senior-manager SQL interview exercise",
+      "company": null,
+      "experience": null,
+      "role": "Data Engineer",
+      "accessedAt": "2026-11-18",
+      "note": "Self-reported interview account; not independently verified. Question paraphrased; answer independently written."
+    }
+  },
+  {
+    "id": "li-sql-b030",
+    "subject": "sql",
+    "topic": "String processing",
+    "subtopic": "Fixed-width formatting with an explicit overflow policy",
+    "title": "Five-character numeric text",
+    "difficulty": "Beginner",
+    "type": "Coding",
+    "minutes": 8,
+    "prompt": "Pad numbers with zeros to width five. Study assumptions: accept integers 0–99999; flag other inputs with null.",
+    "answer": [
+      "Convert an accepted integer to text and apply LPAD with a target length of five and a zero fill character. This returns text because the leading zeros are formatting, not part of a numeric value. Validating the range before padding is important: PostgreSQL LPAD truncates an input that exceeds the target length, so blindly applying it can silently turn a six-digit identifier into a different five-character value.",
+      "Study assumptions: input_values(n) contains integers, negative values and values over 99999 are outside the format contract, and invalid or unknown inputs produce null. The original post asks for fixed-width leading-zero output without an overflow rule; this study choice avoids destructive truncation. If the business wants all input values retained with at least five characters, use a different width rule instead. Test zero, a one-digit value, exactly five digits, a six-digit value, a negative value, and null. Keep the formatted output as text when exporting it."
+    ],
+    "code": "-- PostgreSQL; Study assumptions: input_values(n integer);\n-- invalid, negative, over-width, and NULL values yield NULL.\nSELECT n,\n       CASE WHEN n BETWEEN 0 AND 99999 THEN LPAD(n::text, 5, '0') END\n         AS padded_value\nFROM input_values;",
+    "language": "sql",
+    "pitfalls": [
+      "Letting LPAD truncate an over-width identifier silently.",
+      "Converting the padded text back to integer and losing its zeros."
+    ],
+    "followups": [
+      "Study extension: return an explicit invalid-format status.",
+      "Study extension: support signed values with a separately specified width policy."
+    ],
+    "sourceUrl": "https://www.postgresql.org/docs/current/functions-string.html",
+    "provenance": {
+      "kind": "candidate-reported",
+      "scope": "reported-question",
+      "url": "https://www.linkedin.com/posts/sushmitha-s-213bb319b_sql-scenario-based-interview-questions-i-activity-7493198203064840192-fhYR",
+      "author": "Sushmitha s",
+      "title": "Self-reported SQL scenario interview questions",
+      "company": null,
+      "experience": null,
+      "role": null,
+      "accessedAt": "2026-11-18",
+      "note": "Self-reported interview account; not independently verified. Question paraphrased; answer independently written."
+    }
+  },
+  {
+    "id": "li-sql-b031",
+    "subject": "sql",
+    "topic": "Data quality",
+    "subtopic": "Canonicalizing undirected route keys",
+    "title": "Reverse-route duplicates",
+    "difficulty": "Intermediate",
+    "type": "Coding",
+    "minutes": 10,
+    "prompt": "Collapse exact and reversed routes. Study assumptions: routes(src,dest,km); endpoints are non-null, direction is irrelevant, and differing distances remain separate.",
+    "answer": [
+      "An undirected route can be represented by a canonical endpoint pair: the smaller endpoint first and the larger endpoint second. Group by that pair and by distance to merge both exact repeats and reversed representations while preserving distinct distance observations. COUNT(*) shows how many source rows contributed to each canonical route. This solves symmetric duplicate recognition without an all-pairs self-join that can expand heavily when many duplicates exist.",
+      "Study assumptions: endpoint text uses the database's stable comparison rules, endpoints are known, direction carries no business meaning, and equal endpoints are allowed as a self-route. Distance is part of the key, so a reversed route with a different distance is not silently discarded. If an actual source row must survive rather than returning normalized endpoints, rank rows by a trusted identifier within the canonical group. Do not apply this transformation to one-way journeys, where reversing the endpoints changes the meaning rather than creating a duplicate."
+    ],
+    "code": "-- PostgreSQL; Study assumptions: routes(src text NOT NULL,\n-- dest text NOT NULL, km numeric); undirected, distance is part of the key.\nSELECT LEAST(src, dest) AS endpoint_a,\n       GREATEST(src, dest) AS endpoint_b,\n       km, COUNT(*) AS source_rows\nFROM routes\nGROUP BY LEAST(src, dest), GREATEST(src, dest), km\nORDER BY endpoint_a, endpoint_b, km;",
+    "language": "sql",
+    "pitfalls": [
+      "Dropping distance from the key and merging conflicting measurements.",
+      "Treating reversed one-way routes as duplicates."
+    ],
+    "followups": [
+      "Study extension: retain one original source row using a deterministic identifier.",
+      "Study extension: identify conflicting distances for the same endpoint pair."
+    ],
+    "sourceUrl": "https://www.postgresql.org/docs/current/functions-conditional.html",
+    "provenance": {
+      "kind": "candidate-reported",
+      "scope": "reported-question",
+      "url": "https://www.linkedin.com/posts/sushmitha-s-213bb319b_sql-scenario-based-interview-questions-i-activity-7493198203064840192-fhYR",
+      "author": "Sushmitha s",
+      "title": "Self-reported SQL scenario interview questions",
+      "company": null,
+      "experience": null,
+      "role": null,
+      "accessedAt": "2026-11-18",
+      "note": "Self-reported interview account; not independently verified. Question paraphrased; answer independently written."
+    }
+  },
+  {
+    "id": "li-sql-b032",
+    "subject": "sql",
+    "topic": "Joins",
+    "subtopic": "Cartesian products using an always-true predicate",
+    "title": "Cartesian join without keyword",
+    "difficulty": "Beginner",
+    "type": "Coding",
+    "minutes": 8,
+    "prompt": "Produce Cartesian pairs without CROSS JOIN syntax. Study assumptions: preserve duplicates and null-valued rows.",
+    "answer": [
+      "An inner join with an always-true ON predicate matches every left row with every right row. Its result is therefore the Cartesian product, with row count equal to the product of the two input row counts. Null values in the projected columns do not suppress rows because the predicate never compares those values. This is a different operation from an equality join, where an unknown comparison does not qualify.",
+      "Study assumptions: table_a(id) and table_b(id) may contain duplicate and null values, and the task asks for all row pairs. The independent demonstration has four rows on each side, so it returns sixteen pairs. If either input is empty, the result is empty. Do not add DISTINCT unless duplicate elimination is explicitly required, since that changes the result's multiplicity. A true predicate can generate a very large result even from moderately sized tables, so estimate the output size before using this pattern in an actual report."
+    ],
+    "code": "-- PostgreSQL; Study assumptions: illustrative inputs retain duplicates and NULLs.\nWITH table_a(id) AS (VALUES (NULL::integer),(1),(3),(NULL)),\n     table_b(id) AS (VALUES (1),(2),(NULL::integer),(NULL))\nSELECT a.id AS a_id, b.id AS b_id\nFROM table_a AS a\nJOIN table_b AS b ON true;",
+    "language": "sql",
+    "pitfalls": [
+      "Using a.id = b.id and accidentally excluding non-matching and null pairs.",
+      "Applying DISTINCT and confusing unique values with original row pairs."
+    ],
+    "followups": [
+      "Study extension: calculate the Cartesian count without materializing all pairs.",
+      "Study extension: explain how an empty input affects INNER and LEFT joins."
+    ],
+    "sourceUrl": "https://www.postgresql.org/docs/current/queries-table-expressions.html",
+    "provenance": {
+      "kind": "candidate-reported",
+      "scope": "reported-question",
+      "url": "https://www.linkedin.com/posts/sushmitha-s-213bb319b_sql-scenario-based-interview-questions-i-activity-7493198203064840192-fhYR",
+      "author": "Sushmitha s",
+      "title": "Self-reported SQL scenario interview questions",
+      "company": null,
+      "experience": null,
+      "role": null,
+      "accessedAt": "2026-11-18",
+      "note": "Self-reported interview account; not independently verified. Question paraphrased; answer independently written."
+    }
+  }
+]

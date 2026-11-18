@@ -1,0 +1,1028 @@
+[
+  {
+    "id": "li-sql-c001",
+    "subject": "sql",
+    "topic": "Aggregation",
+    "subtopic": "Row and group filtering",
+    "title": "WHERE and HAVING",
+    "difficulty": "Intermediate",
+    "type": "Concept",
+    "minutes": 8,
+    "prompt": "Explain how WHERE and HAVING differ and when each predicate applies.",
+    "answer": [
+      "WHERE filters input rows before grouping; HAVING filters the groups produced by aggregation. A condition on individual transactions belongs in WHERE, while a condition on their grouped total belongs in HAVING. Moving a predicate can change which records contribute to an aggregate and therefore alter its result.",
+      "In PostgreSQL, HAVING can work without an explicit GROUP BY, treating the input as one group. Determine whether the requirement filters records or summaries. Explain this logical distinction separately from physical execution: an optimizer can reorganize work while preserving the query's meaning."
+    ],
+    "code": "",
+    "language": "sql",
+    "pitfalls": [
+      "Filtering input rows when the requirement filters aggregate results.",
+      "Claiming HAVING always requires an explicit GROUP BY."
+    ],
+    "followups": [
+      "Study extension: explain an aggregate over an empty input.",
+      "Study extension: compare a row filter with a group-total filter."
+    ],
+    "sourceUrl": "https://www.postgresql.org/docs/current/sql-select.html",
+    "provenance": {
+      "kind": "candidate-reported",
+      "scope": "reported-question",
+      "url": "https://www.linkedin.com/posts/chris-french-data_if-youre-interviewing-for-an-entry-level-activity-7117495881980862464-kIly",
+      "author": "Chris French",
+      "title": "SQL interview recollection",
+      "company": null,
+      "role": null,
+      "experience": null,
+      "accessedAt": "2026-11-18",
+      "note": "Self-reported interview experience; not independently verified. Question paraphrased; answer independently written."
+    }
+  },
+  {
+    "id": "li-sql-c002",
+    "subject": "sql",
+    "topic": "Joins",
+    "subtopic": "Preserving unmatched left-side rows",
+    "title": "INNER and LEFT JOIN",
+    "difficulty": "Intermediate",
+    "type": "Concept",
+    "minutes": 8,
+    "prompt": "Explain how replacing INNER JOIN with LEFT JOIN can change a result.",
+    "answer": [
+      "An INNER JOIN returns combinations of rows that satisfy its join condition. A LEFT JOIN returns those matches and preserves each unmatched row from its left input, supplying nulls for the right-side columns. Both can multiply rows when the right side contains several matches. A left join does not promise one output row per left input row.",
+      "A predicate in WHERE on the right-side columns can remove the null-extended rows, making a left join behave like an inner join for that condition. Put matching restrictions in ON when unmatched left rows must remain. Count matched and unmatched cases separately, and check the uniqueness of the matching key before predicting output size."
+    ],
+    "code": "",
+    "language": "sql",
+    "pitfalls": [
+      "Assuming LEFT JOIN prevents one-to-many multiplication.",
+      "Filtering right-side columns in WHERE and discarding unmatched rows."
+    ],
+    "followups": [
+      "Study extension: preserve left rows while limiting acceptable right-side matches.",
+      "Study extension: predict the result when the right key is duplicated."
+    ],
+    "sourceUrl": "https://www.postgresql.org/docs/current/queries-table-expressions.html",
+    "provenance": {
+      "kind": "candidate-reported",
+      "scope": "reported-question",
+      "url": "https://www.linkedin.com/posts/chris-french-data_if-youre-interviewing-for-an-entry-level-activity-7117495881980862464-kIly",
+      "author": "Chris French",
+      "title": "SQL interview recollection",
+      "company": null,
+      "role": null,
+      "experience": null,
+      "accessedAt": "2026-11-18",
+      "note": "Self-reported interview experience; not independently verified. Question paraphrased; answer independently written."
+    }
+  },
+  {
+    "id": "li-sql-c003",
+    "subject": "sql",
+    "topic": "Subqueries and CTEs",
+    "subtopic": "Named query stages versus nested query expressions",
+    "title": "CTEs and subqueries",
+    "difficulty": "Intermediate",
+    "type": "Concept",
+    "minutes": 8,
+    "prompt": "Compare a common table expression with a subquery, including scope and optimization.",
+    "answer": [
+      "A subquery is a query embedded inside another statement, supplying a table, scalar value, or condition according to its position. A common table expression names an auxiliary query with WITH for use within the containing statement. CTEs can clarify several stages without deeply nesting expressions.",
+      "Neither form guarantees better performance. Modern PostgreSQL can fold a side-effect-free CTE into its parent; materialization depends on references and options. A CTE is not automatically persistent or independently indexable. Preserve the intended semantics, choose readable SQL, and inspect actual execution plans before claiming a speed improvement."
+    ],
+    "code": "",
+    "language": "sql",
+    "pitfalls": [
+      "Claiming every CTE is materialized or faster than a subquery.",
+      "Expecting the CTE name to survive the statement."
+    ],
+    "followups": [
+      "Study extension: inspect MATERIALIZED and NOT MATERIALIZED plans.",
+      "Study extension: distinguish scalar subqueries from derived tables."
+    ],
+    "sourceUrl": "https://www.postgresql.org/docs/current/queries-with.html",
+    "provenance": {
+      "kind": "candidate-reported",
+      "scope": "reported-question",
+      "url": "https://www.linkedin.com/posts/chris-french-data_if-youre-interviewing-for-an-entry-level-activity-7117495881980862464-kIly",
+      "author": "Chris French",
+      "title": "SQL interview recollection",
+      "company": null,
+      "role": null,
+      "experience": null,
+      "accessedAt": "2026-11-18",
+      "note": "Self-reported interview experience; not independently verified. Question paraphrased; answer independently written."
+    }
+  },
+  {
+    "id": "li-sql-c004",
+    "subject": "sql",
+    "topic": "Data modification",
+    "subtopic": "Deleting rows versus removing a relation",
+    "title": "DELETE, TRUNCATE, DROP",
+    "difficulty": "Intermediate",
+    "type": "Concept",
+    "minutes": 8,
+    "prompt": "Compare DELETE, TRUNCATE, and DROP; identify which details depend on the database.",
+    "answer": [
+      "DELETE removes rows selected by a condition and retains the table definition. TRUNCATE empties a table without a row predicate, usually using a more direct storage operation. DROP removes the table object itself, so its definition and data are no longer available through that object. Their permissions, dependency checks, locking, and trigger behavior differ.",
+      "For PostgreSQL specifically, TRUNCATE takes an ACCESS EXCLUSIVE lock, can roll back within a transaction, and preserves owned sequences unless RESTART IDENTITY is requested. It fires TRUNCATE triggers rather than DELETE triggers. Claims that TRUNCATE can never roll back or always resets an identity are therefore misleading. Establish the engine and the required data-retention behavior before choosing a command."
+    ],
+    "code": "",
+    "language": "sql",
+    "pitfalls": [
+      "Treating rollback and identity behavior as universal across SQL engines.",
+      "Using DROP when only the rows should be removed."
+    ],
+    "followups": [
+      "Study extension: explain foreign-key restrictions on TRUNCATE.",
+      "Study extension: compare DELETE and TRUNCATE trigger events."
+    ],
+    "sourceUrl": "https://www.postgresql.org/docs/current/sql-truncate.html",
+    "provenance": {
+      "kind": "candidate-reported",
+      "scope": "reported-question",
+      "url": "https://www.linkedin.com/posts/ankit-pal-b95572282_java-javadeveloper-backenddeveloper-activity-7500431187111510016-1BsF",
+      "author": "Ankit Pal",
+      "title": "Java Developer second technical round",
+      "company": null,
+      "role": "Java Developer",
+      "experience": null,
+      "accessedAt": "2026-11-18",
+      "note": "Self-reported interview experience; not independently verified. Question paraphrased; answer independently written."
+    }
+  },
+  {
+    "id": "li-sql-c005",
+    "subject": "sql",
+    "topic": "Constraints",
+    "subtopic": "Identity represented by several columns",
+    "title": "Composite keys",
+    "difficulty": "Intermediate",
+    "type": "Concept",
+    "minutes": 8,
+    "prompt": "Explain a composite key and when several columns together identify a row.",
+    "answer": [
+      "A composite key identifies a row through several columns together. Uniqueness applies to the complete combination, so an individual component may repeat. A PostgreSQL composite primary key also makes every component non-null. It suits a domain whose identity naturally consists of several attributes.",
+      "Choose components from business rules rather than today's absence of duplicates. References to that identity must represent the complete key. A surrogate identifier can simplify references and updates, but may still require a separate uniqueness constraint to protect the business combination. Consider how changes affect referencing rows."
+    ],
+    "code": "",
+    "language": "sql",
+    "pitfalls": [
+      "Making every component individually unique and over-constraining valid rows.",
+      "Referencing only part of an identity without an appropriate uniqueness rule."
+    ],
+    "followups": [
+      "Study extension: compare natural and surrogate identifiers.",
+      "Study extension: represent a composite foreign key."
+    ],
+    "sourceUrl": "https://www.postgresql.org/docs/current/sql-createtable.html",
+    "provenance": {
+      "kind": "candidate-reported",
+      "scope": "reported-question",
+      "url": "https://www.linkedin.com/posts/ankit-pal-b95572282_java-javadeveloper-backenddeveloper-activity-7500431187111510016-1BsF",
+      "author": "Ankit Pal",
+      "title": "Java Developer second technical round",
+      "company": null,
+      "role": "Java Developer",
+      "experience": null,
+      "accessedAt": "2026-11-18",
+      "note": "Self-reported interview experience; not independently verified. Question paraphrased; answer independently written."
+    }
+  },
+  {
+    "id": "li-sql-c006",
+    "subject": "sql",
+    "topic": "Constraints",
+    "subtopic": "Foreign keys and referential integrity",
+    "title": "Foreign-key integrity",
+    "difficulty": "Intermediate",
+    "type": "Concept",
+    "minutes": 8,
+    "prompt": "Explain what a foreign key enforces and how parent updates or deletes affect it.",
+    "answer": [
+      "A foreign key requires referencing values to correspond to an eligible key in the referenced table. It protects relationships across database clients and avoids relying on application checks that can race. In PostgreSQL, the target needs an appropriate primary or unique key.",
+      "Define whether parent changes should be rejected, cascaded, or reflected by setting the reference to null or a default. Add NOT NULL when the relationship is mandatory. PostgreSQL does not automatically index referencing columns, so assess that index separately for join performance and parent modifications. Cascade behavior should reflect business rules."
+    ],
+    "code": "",
+    "language": "sql",
+    "pitfalls": [
+      "Assuming the referencing column is automatically indexed in PostgreSQL.",
+      "Enabling cascading deletion without considering the business relationship."
+    ],
+    "followups": [
+      "Study extension: compare optional and mandatory relationships.",
+      "Study extension: explain deferred foreign-key validation."
+    ],
+    "sourceUrl": "https://www.postgresql.org/docs/current/ddl-constraints.html",
+    "provenance": {
+      "kind": "candidate-reported",
+      "scope": "reported-question",
+      "url": "https://www.linkedin.com/posts/ankit-kumar-gurjar_javaquestions-java-springboot-activity-7451823208699256833--vhs",
+      "author": "ANKIT GURJAR",
+      "title": "Junior Java Developer first technical round",
+      "company": null,
+      "role": "Junior Java Developer",
+      "experience": null,
+      "accessedAt": "2026-11-18",
+      "note": "Self-reported interview experience; not independently verified. Question paraphrased; answer independently written."
+    }
+  },
+  {
+    "id": "li-sql-c007",
+    "subject": "sql",
+    "topic": "Indexes",
+    "subtopic": "Read benefits and maintenance costs",
+    "title": "Index trade-offs",
+    "difficulty": "Intermediate",
+    "type": "Concept",
+    "minutes": 8,
+    "prompt": "Explain how indexing can improve retrieval and when its costs outweigh its benefits.",
+    "answer": [
+      "An index maintains a search structure that can help the database locate selected rows without inspecting every table row. Depending on the index and query, it may also support ordering or reduce table reads. The important question is whether the workload uses the indexed expressions and whether the matching rows are selective enough to justify the access path.",
+      "Indexes consume storage and must be maintained when affected data changes. They can therefore increase write cost while providing little benefit to a small table or a query that needs most rows. PostgreSQL's planner can correctly choose a sequential scan despite an available index. Use representative queries, data distribution, and measured plans to justify the index rather than indexing every column."
+    ],
+    "code": "",
+    "language": "sql",
+    "pitfalls": [
+      "Equating an unused index with a broken optimizer.",
+      "Ignoring the write and storage cost of additional indexes."
+    ],
+    "followups": [
+      "Study extension: consider column order in a multicolumn index.",
+      "Study extension: compare a selective lookup with a broad scan."
+    ],
+    "sourceUrl": "https://www.postgresql.org/docs/current/indexes-intro.html",
+    "provenance": {
+      "kind": "candidate-reported",
+      "scope": "reported-question",
+      "url": "https://www.linkedin.com/posts/ankit-kumar-gurjar_javaquestions-java-springboot-activity-7451823208699256833--vhs",
+      "author": "ANKIT GURJAR",
+      "title": "Junior Java Developer first technical round",
+      "company": null,
+      "role": "Junior Java Developer",
+      "experience": null,
+      "accessedAt": "2026-11-18",
+      "note": "Self-reported interview experience; not independently verified. Question paraphrased; answer independently written."
+    }
+  },
+  {
+    "id": "li-sql-c008",
+    "subject": "sql",
+    "topic": "Query optimization",
+    "subtopic": "Excess database round trips from related loading",
+    "title": "The N+1 query problem",
+    "difficulty": "Intermediate",
+    "type": "Concept",
+    "minutes": 8,
+    "prompt": "Explain the N+1 query problem and compare ways to load related records efficiently.",
+    "answer": [
+      "N+1 describes an access pattern that loads a collection with one query and then sends another query for each item to retrieve related data. The SQL statements can each look fast while total request time grows because of repeated network trips and repeated database work. It often appears when an object mapper lazily loads a navigation property inside a loop.",
+      "Inspect the SQL log and request-level query count before changing indexes. Eager loading, a targeted projection, or batching related identifiers can reduce round trips. One enormous joined result is not automatically best: multiple collections can multiply rows and transfer repeated data. Choose a loading strategy that bounds both query count and result size, and verify it with realistic collection sizes."
+    ],
+    "code": "",
+    "language": "sql",
+    "pitfalls": [
+      "Tuning individual statements while ignoring total query count.",
+      "Replacing N+1 with a join that produces a huge duplicated result."
+    ],
+    "followups": [
+      "Study extension: compare eager loading and explicit batching.",
+      "Study extension: measure queries per application request."
+    ],
+    "sourceUrl": "https://learn.microsoft.com/en-us/ef/core/performance/efficient-querying",
+    "provenance": {
+      "kind": "candidate-reported",
+      "scope": "reported-question",
+      "url": "https://www.linkedin.com/posts/ankit-kumar-gurjar_javaquestions-java-springboot-activity-7451823208699256833--vhs",
+      "author": "ANKIT GURJAR",
+      "title": "Junior Java Developer first technical round",
+      "company": null,
+      "role": "Junior Java Developer",
+      "experience": null,
+      "accessedAt": "2026-11-18",
+      "note": "Self-reported interview experience; not independently verified. Question paraphrased; answer independently written."
+    }
+  },
+  {
+    "id": "li-sql-c009",
+    "subject": "sql",
+    "topic": "Query optimization",
+    "subtopic": "Diagnosing plans before rewriting queries",
+    "title": "Investigate a slow query",
+    "difficulty": "Intermediate",
+    "type": "Concept",
+    "minutes": 8,
+    "prompt": "Describe how you would diagnose and improve a slow SQL query.",
+    "answer": [
+      "Start with the actual query, its parameters, representative data, and a reproducible latency measurement. Inspect the execution plan to see scans, joins, sorts, and aggregations, then compare estimated row counts with actual counts where available. Large estimation errors can explain an unsuitable plan and may point to stale statistics or skewed predicates rather than a missing index.",
+      "In PostgreSQL, EXPLAIN ANALYZE executes the statement; use an appropriate safe environment when measuring mutations. Examine repeated loops, expensive scans, and sorting or hashing that spills. Reduce unnecessary work or adjust an index only after identifying the bottleneck. Re-measure the same workload and check result equivalence, because a faster query that changes row multiplicity or filtering has not solved the problem."
+    ],
+    "code": "",
+    "language": "sql",
+    "pitfalls": [
+      "Reading estimated cost as elapsed milliseconds.",
+      "Running EXPLAIN ANALYZE on a mutation without accounting for its execution."
+    ],
+    "followups": [
+      "Study extension: interpret actual rows multiplied by loops.",
+      "Study extension: investigate inaccurate cardinality estimates."
+    ],
+    "sourceUrl": "https://www.postgresql.org/docs/current/using-explain.html",
+    "provenance": {
+      "kind": "candidate-reported",
+      "scope": "reported-question",
+      "url": "https://www.linkedin.com/posts/manoj-tr_data-engineer-interview-experience-series-activity-7494589851070107648-ctCh",
+      "author": "Manoj. T. R.",
+      "title": "Data Engineer interview journey: SQL questions",
+      "company": null,
+      "role": "Data Engineer",
+      "experience": null,
+      "accessedAt": "2026-11-18",
+      "note": "Self-reported interview experience; not independently verified. Question paraphrased; answer independently written."
+    }
+  },
+  {
+    "id": "li-sql-c010",
+    "subject": "sql",
+    "topic": "Transactions",
+    "subtopic": "Concurrency anomalies and isolation guarantees",
+    "title": "Transaction isolation levels",
+    "difficulty": "Advanced",
+    "type": "Concept",
+    "minutes": 10,
+    "prompt": "Explain why transactions need isolation and how you would choose an isolation level.",
+    "answer": [
+      "Isolation controls which effects of concurrent transactions a transaction can observe. Without a suitable guarantee, repeated reads or decisions based on several reads can conflict with another session's changes. The standard names Read Uncommitted, Read Committed, Repeatable Read, and Serializable. Choose a level from the business invariant and acceptable anomalies, rather than selecting the strongest name without considering concurrency.",
+      "PostgreSQL implements Read Uncommitted as Read Committed. Its Repeatable Read uses a transaction snapshot and prevents phantoms, but serialization anomalies can remain. Serializable detects executions that cannot correspond to a serial ordering and may abort a transaction, so applications must retry the whole transaction appropriately. Isolation alone does not make an incorrect multi-step business rule correct; the statements and retry behavior still matter."
+    ],
+    "code": "",
+    "language": "sql",
+    "pitfalls": [
+      "Assuming isolation-level behavior is identical in every database.",
+      "Retrying only the last statement after a serialization failure."
+    ],
+    "followups": [
+      "Study extension: demonstrate nonrepeatable reads in two sessions.",
+      "Study extension: explain a write-skew anomaly."
+    ],
+    "sourceUrl": "https://www.postgresql.org/docs/current/transaction-iso.html",
+    "provenance": {
+      "kind": "candidate-reported",
+      "scope": "reported-question",
+      "url": "https://www.linkedin.com/posts/srikalaivani-k-060122389_java-springboot-microservices-activity-7429178951786287105-6-5z",
+      "author": "Srikalaivani K",
+      "title": "Ford Motors first-level interview",
+      "company": "Ford Motors",
+      "role": null,
+      "experience": null,
+      "accessedAt": "2026-11-18",
+      "note": "Self-reported interview experience; not independently verified. Question paraphrased; answer independently written."
+    }
+  },
+  {
+    "id": "li-sql-c011",
+    "subject": "sql",
+    "topic": "Schema operations",
+    "subtopic": "Copying a definition without data",
+    "title": "Copy a table structure",
+    "difficulty": "Intermediate",
+    "type": "Concept",
+    "minutes": 8,
+    "prompt": "Explain how to create a table with another table's structure and what may need separate copying.",
+    "answer": [
+      "First clarify whether structure means columns alone or also defaults, indexes, constraints, and relationships. PostgreSQL CREATE TABLE with LIKE copies column definitions; INCLUDING options request additional properties. INCLUDING ALL remains insufficient for a full schema clone because foreign keys and triggers need separate attention.",
+      "An empty query-based copy reproduces output columns without preserving all source rules. Inspect defaults because expressions can still reference existing sequences. For a faithful migration, export and inspect DDL, then compare object definitions. Having the same columns and no rows does not establish equivalent database behavior."
+    ],
+    "code": "-- PostgreSQL. Study assumptions: source_table exists; copy its structure, not its rows.\nCREATE TABLE copied_table (LIKE source_table INCLUDING ALL);",
+    "language": "sql",
+    "pitfalls": [
+      "Assuming an empty CREATE TABLE AS copies all indexes and constraints.",
+      "Overlooking default expressions that reference existing objects."
+    ],
+    "followups": [
+      "Study extension: compare LIKE with CREATE TABLE AS.",
+      "Study extension: identify properties that INCLUDING ALL does not copy."
+    ],
+    "sourceUrl": "https://www.postgresql.org/docs/current/sql-createtable.html",
+    "provenance": {
+      "kind": "candidate-reported",
+      "scope": "reported-question",
+      "url": "https://www.linkedin.com/posts/srikalaivani-k-060122389_java-springboot-microservices-activity-7429178951786287105-6-5z",
+      "author": "Srikalaivani K",
+      "title": "Ford Motors first-level interview",
+      "company": "Ford Motors",
+      "role": null,
+      "experience": null,
+      "accessedAt": "2026-11-18",
+      "note": "Self-reported interview experience; not independently verified. Question paraphrased; answer independently written."
+    }
+  },
+  {
+    "id": "li-sql-c012",
+    "subject": "sql",
+    "topic": "Set operations",
+    "subtopic": "Combining results with or without deduplication",
+    "title": "UNION and UNION ALL",
+    "difficulty": "Intermediate",
+    "type": "Concept",
+    "minutes": 8,
+    "prompt": "Compare UNION and UNION ALL, including duplicate handling and compatible inputs.",
+    "answer": [
+      "Both operators combine rows from compatible query results. UNION removes duplicate complete rows from the combined result, while UNION ALL retains every occurrence. Compatibility requires the same number of output columns and compatible corresponding data types; columns align by position, not by their aliases. Neither operator matches related rows horizontally as a join would.",
+      "Deduplication can require extra sorting or hashing, so prefer UNION ALL when duplicates are meaningful or the inputs are known to be disjoint. Do not use UNION merely to hide duplicate rows created by an incorrect join. Apply an outer ORDER BY for a guaranteed final order. If branch-specific ordering or limits are required, use the engine's supported parenthesized query structure deliberately."
+    ],
+    "code": "",
+    "language": "sql",
+    "pitfalls": [
+      "Assuming matching column names align UNION inputs.",
+      "Using deduplication to conceal a join error."
+    ],
+    "followups": [
+      "Study extension: explain how duplicates are assessed across several columns.",
+      "Study extension: compare UNION with a horizontal join."
+    ],
+    "sourceUrl": "https://www.postgresql.org/docs/current/queries-union.html",
+    "provenance": {
+      "kind": "candidate-reported",
+      "scope": "reported-question",
+      "url": "https://www.linkedin.com/posts/aarthi-d-444bb7251_dataanalyst-interviewexperience-sql-activity-7392183834970218496-tEnf",
+      "author": "Aarthi D",
+      "title": "Data Analyst Intern interview",
+      "company": null,
+      "role": "Data Analyst Intern",
+      "experience": null,
+      "accessedAt": "2026-11-18",
+      "note": "Self-reported interview experience; not independently verified. Question paraphrased; answer independently written."
+    }
+  },
+  {
+    "id": "li-sql-c013",
+    "subject": "sql",
+    "topic": "Query semantics",
+    "subtopic": "Logical processing versus physical planning",
+    "title": "Logical query order",
+    "difficulty": "Intermediate",
+    "type": "Concept",
+    "minutes": 8,
+    "prompt": "Explain the logical stages of SELECT and how they affect aliases, grouping, and filtering.",
+    "answer": [
+      "A typical PostgreSQL SELECT logically builds FROM and JOIN input, applies WHERE, groups rows and applies HAVING, computes output expressions including windows, handles requested deduplication, orders, and limits the result. This explains why aggregate results are unavailable to row-level filters and output aliases are generally unavailable in WHERE.",
+      "This sequence describes query meaning rather than mandatory physical operations. The optimizer can move eligible predicates or reorder joins while preserving results. Use logical stages to reason about correctness, and the execution plan to explain actual work. Confusing these models produces misleading performance explanations."
+    ],
+    "code": "",
+    "language": "sql",
+    "pitfalls": [
+      "Describing the logical sequence as the mandatory physical execution plan.",
+      "Using a SELECT alias in WHERE without checking dialect rules."
+    ],
+    "followups": [
+      "Study extension: explain why filtering a window result needs another query level.",
+      "Study extension: distinguish DISTINCT from GROUP BY."
+    ],
+    "sourceUrl": "https://www.postgresql.org/docs/current/sql-select.html",
+    "provenance": {
+      "kind": "candidate-reported",
+      "scope": "reported-topic",
+      "url": "https://www.linkedin.com/posts/pratik-jugant-mohapatra-_sql-powerbi-dataanalytics-activity-7236749926943088641-exof",
+      "author": "Pratik Jugant Mohapatra",
+      "title": "Senior Data Associate interview at an unnamed MNC",
+      "company": null,
+      "role": "Senior Data Associate",
+      "experience": null,
+      "accessedAt": "2026-11-18",
+      "note": "Self-reported interview experience; not independently verified. Question paraphrased; answer independently written."
+    }
+  },
+  {
+    "id": "li-sql-c014",
+    "subject": "sql",
+    "topic": "Data modeling",
+    "subtopic": "Selecting relational or nonrelational data models",
+    "title": "Relational and NoSQL stores",
+    "difficulty": "Intermediate",
+    "type": "Concept",
+    "minutes": 8,
+    "prompt": "Compare relational and NoSQL data models and explain how workload requirements influence the choice.",
+    "answer": [
+      "A relational database models data as relations with declared columns, keys, constraints, and queryable relationships. NoSQL is a broad category covering document, key-value, graph, and other models, each with different access patterns. Compare a specific pair of systems rather than treating every nonrelational database as one design. Start with the operations the application must support and the relationships it must preserve.",
+      "Consider transaction scope, consistency requirements, query flexibility, indexing, scale, governance, and operational cost. Flexible documents can suit aggregate-shaped data, while relational constraints and joins can suit strongly connected business records. Neither category universally implies the absence of transactions or horizontal scaling. A system may use several models, but each additional store creates synchronization and operational work that needs a concrete benefit."
+    ],
+    "code": "",
+    "language": "sql",
+    "pitfalls": [
+      "Claiming all NoSQL systems lack transactions or a schema.",
+      "Choosing a model without describing the required access patterns."
+    ],
+    "followups": [
+      "Study extension: model the same relationship in documents and relations.",
+      "Study extension: explain the cost of synchronizing two stores."
+    ],
+    "sourceUrl": "https://learn.microsoft.com/en-us/azure/architecture/data-guide/technology-choices/understand-data-store-models",
+    "provenance": {
+      "kind": "candidate-reported",
+      "scope": "reported-topic",
+      "url": "https://www.linkedin.com/posts/pratik-jugant-mohapatra-_sql-powerbi-dataanalytics-activity-7236749926943088641-exof",
+      "author": "Pratik Jugant Mohapatra",
+      "title": "Senior Data Associate interview at an unnamed MNC",
+      "company": null,
+      "role": "Senior Data Associate",
+      "experience": null,
+      "accessedAt": "2026-11-18",
+      "note": "Self-reported interview experience; not independently verified. Question paraphrased; answer independently written."
+    }
+  },
+  {
+    "id": "li-sql-c015",
+    "subject": "sql",
+    "topic": "Subqueries and CTEs",
+    "subtopic": "Existence versus value membership",
+    "title": "EXISTS and IN",
+    "difficulty": "Intermediate",
+    "type": "Concept",
+    "minutes": 8,
+    "prompt": "Contrast existence and membership tests.",
+    "answer": [
+      "EXISTS asks whether a subquery returns any row; its output expressions usually do not matter. IN compares a value with the values produced by its right-hand input. A correlated EXISTS can express whether a related row satisfies a condition without adding one output row for every match. Duplicates in the subquery do not themselves duplicate the outer rows.",
+      "Nulls are the important semantic trap. A failed equality match against an IN list that contains null can produce unknown rather than false, which is particularly surprising with NOT IN. A correctly correlated NOT EXISTS often states an anti-match requirement more directly. Neither form is universally faster: equivalent positive tests may receive similar plans. Establish null handling and compare the engine's actual plan."
+    ],
+    "code": "",
+    "language": "sql",
+    "pitfalls": [
+      "Ignoring nulls when using NOT IN.",
+      "Assuming EXISTS is always faster than IN."
+    ],
+    "followups": [
+      "Study extension: evaluate NOT IN when its input contains null.",
+      "Study extension: compare an existence test with a one-to-many join."
+    ],
+    "sourceUrl": "https://www.postgresql.org/docs/current/functions-subquery.html",
+    "provenance": {
+      "kind": "candidate-reported",
+      "scope": "reported-question",
+      "url": "https://www.linkedin.com/posts/rabi-sankar-mahata_i-thought-i-knew-sql-until-my-interviewer-activity-7390002172161114112-I-4I",
+      "author": "Rabi Sankar Mahata",
+      "title": "Self-reported SQL interview question list",
+      "company": null,
+      "role": null,
+      "experience": null,
+      "note": "Self-reported question list; employer and interview context not stated. Not independently verified. Question paraphrased; answer independently written.",
+      "accessedAt": "2026-11-18"
+    }
+  },
+  {
+    "id": "li-sql-c016",
+    "subject": "sql",
+    "topic": "Constraints",
+    "subtopic": "Primary-key identity versus alternate uniqueness",
+    "title": "Keys and uniqueness",
+    "difficulty": "Intermediate",
+    "type": "Concept",
+    "minutes": 8,
+    "prompt": "Compare primary-key and uniqueness rules.",
+    "answer": [
+      "A primary key declares the chosen row identity and requires uniqueness and non-nullability. A UNIQUE constraint protects an additional unique combination without making it the primary identity. A table may have several unique constraints, and either kind can span multiple columns.",
+      "Null policy depends on the engine. PostgreSQL normally permits multiple nulls under UNIQUE, but NULLS NOT DISTINCT changes that behavior. Primary-key columns always reject nulls. Identify business identities and alternate identifiers, then declare their rules explicitly: adding a surrogate primary key does not prevent duplicate business identifiers elsewhere."
+    ],
+    "code": "",
+    "language": "sql",
+    "pitfalls": [
+      "Assuming UNIQUE always rejects multiple nulls in PostgreSQL.",
+      "Believing a surrogate primary key enforces all business uniqueness."
+    ],
+    "followups": [
+      "Study extension: explain NULLS NOT DISTINCT.",
+      "Study extension: distinguish a candidate key from the selected primary key."
+    ],
+    "sourceUrl": "https://www.postgresql.org/docs/current/ddl-constraints.html",
+    "provenance": {
+      "kind": "candidate-reported",
+      "scope": "reported-question",
+      "url": "https://www.linkedin.com/posts/rabi-sankar-mahata_i-thought-i-knew-sql-until-my-interviewer-activity-7390002172161114112-I-4I",
+      "author": "Rabi Sankar Mahata",
+      "title": "Self-reported SQL interview question list",
+      "company": null,
+      "role": null,
+      "experience": null,
+      "note": "Self-reported question list; employer and interview context not stated. Not independently verified. Question paraphrased; answer independently written.",
+      "accessedAt": "2026-11-18"
+    }
+  },
+  {
+    "id": "li-sql-c017",
+    "subject": "sql",
+    "topic": "Aggregation",
+    "subtopic": "Preserving detail rows while calculating group metrics",
+    "title": "Windows and grouping",
+    "difficulty": "Intermediate",
+    "type": "Concept",
+    "minutes": 8,
+    "prompt": "Compare window calculations with grouped aggregation.",
+    "answer": [
+      "GROUP BY combines rows into groups and normally produces one result row per group. A window calculation retains each input row while calculating over a related partition or frame. Choose grouping when the desired output grain is a summary, and a window when detail rows must remain alongside a comparative or cumulative metric. The grain of the required result is the deciding question.",
+      "Window functions operate after the query's row and group filters, so discarded rows do not participate. PARTITION BY defines related rows; a window ORDER BY and frame can further restrict the calculation. An ordinary grouped aggregate and an ordered window aggregate can therefore return very different results even when they use the same SUM function. Check the frame rather than assuming it covers an entire partition."
+    ],
+    "code": "",
+    "language": "sql",
+    "pitfalls": [
+      "Expecting a window function to reduce the output to one row per group.",
+      "Ignoring the window frame when ORDER BY is present."
+    ],
+    "followups": [
+      "Study extension: compare a partition total with a running total.",
+      "Study extension: apply a window over already grouped results."
+    ],
+    "sourceUrl": "https://www.postgresql.org/docs/current/tutorial-window.html",
+    "provenance": {
+      "kind": "candidate-reported",
+      "scope": "reported-question",
+      "url": "https://www.linkedin.com/posts/rabi-sankar-mahata_i-thought-i-knew-sql-until-my-interviewer-activity-7390002172161114112-I-4I",
+      "author": "Rabi Sankar Mahata",
+      "title": "Self-reported SQL interview question list",
+      "company": null,
+      "role": null,
+      "experience": null,
+      "note": "Self-reported question list; employer and interview context not stated. Not independently verified. Question paraphrased; answer independently written.",
+      "accessedAt": "2026-11-18"
+    }
+  },
+  {
+    "id": "li-sql-c018",
+    "subject": "sql",
+    "topic": "Subqueries and CTEs",
+    "subtopic": "Statement-local expression versus stored intermediate relation",
+    "title": "CTE or temporary table",
+    "difficulty": "Intermediate",
+    "type": "Concept",
+    "minutes": 8,
+    "prompt": "Compare scope, storage, and reuse.",
+    "answer": [
+      "A CTE names an expression within one statement; a temporary table is a database relation that can survive across statements. Temporary tables can be populated, indexed, and independently reused. A CTE helps express query stages without a separate creation and cleanup workflow.",
+      "In PostgreSQL, materializing a CTE does not create a separately named, user-indexable temporary table. Temporary-table loading and maintenance have costs but can benefit repeatedly consumed intermediates. Compare the entire workflow, including population, and establish required lifetime and concurrency behavior. A comparison of only the final SELECT omits important work."
+    ],
+    "code": "",
+    "language": "sql",
+    "pitfalls": [
+      "Assuming a materialized CTE is a separately indexable temporary table.",
+      "Ignoring temporary-table population cost in a performance comparison."
+    ],
+    "followups": [
+      "Study extension: plan a multi-statement intermediate workflow.",
+      "Study extension: compare transaction and session lifetimes."
+    ],
+    "sourceUrl": "https://www.postgresql.org/docs/current/queries-with.html",
+    "provenance": {
+      "kind": "candidate-reported",
+      "scope": "reported-question",
+      "url": "https://www.linkedin.com/posts/rabi-sankar-mahata_i-thought-i-knew-sql-until-my-interviewer-activity-7390002172161114112-I-4I",
+      "author": "Rabi Sankar Mahata",
+      "title": "Self-reported SQL interview question list",
+      "company": null,
+      "role": null,
+      "experience": null,
+      "note": "Self-reported question list; employer and interview context not stated. Not independently verified. Question paraphrased; answer independently written.",
+      "accessedAt": "2026-11-18"
+    }
+  },
+  {
+    "id": "li-sql-c019",
+    "subject": "sql",
+    "topic": "Views",
+    "subtopic": "Stored results versus a stored query definition",
+    "title": "Materialized views",
+    "difficulty": "Intermediate",
+    "type": "Concept",
+    "minutes": 8,
+    "prompt": "Compare stored results with ordinary views.",
+    "answer": [
+      "An ordinary PostgreSQL view stores a query definition and obtains its rows from that query when referenced. A materialized view persists the result of its defining query, allowing subsequent reads to use the stored result directly. This can avoid repeatedly calculating a costly summary and permits indexes on the materialized result, at the price of additional storage.",
+      "The stored result can become stale when base data changes. PostgreSQL refreshes it through REFRESH MATERIALIZED VIEW; it is not automatically current after every write. Decide the freshness requirement, refresh schedule, cost, and reader behavior before choosing it. A faster historical summary may be useful, while a balance requiring the latest committed data needs a different freshness contract."
+    ],
+    "code": "",
+    "language": "sql",
+    "pitfalls": [
+      "Assuming a materialized view updates automatically with every base-table change.",
+      "Choosing cached results without a freshness requirement."
+    ],
+    "followups": [
+      "Study extension: discuss concurrent refresh requirements.",
+      "Study extension: define a refresh policy for historical summaries."
+    ],
+    "sourceUrl": "https://www.postgresql.org/docs/current/rules-materializedviews.html",
+    "provenance": {
+      "kind": "candidate-reported",
+      "scope": "reported-question",
+      "url": "https://www.linkedin.com/posts/rabi-sankar-mahata_i-thought-i-knew-sql-until-my-interviewer-activity-7390002172161114112-I-4I",
+      "author": "Rabi Sankar Mahata",
+      "title": "Self-reported SQL interview question list",
+      "company": null,
+      "role": null,
+      "experience": null,
+      "note": "Self-reported question list; employer and interview context not stated. Not independently verified. Question paraphrased; answer independently written.",
+      "accessedAt": "2026-11-18"
+    }
+  },
+  {
+    "id": "li-sql-c020",
+    "subject": "sql",
+    "topic": "Data modeling",
+    "subtopic": "Transactional and analytical workload design",
+    "title": "OLTP and OLAP",
+    "difficulty": "Intermediate",
+    "type": "Concept",
+    "minutes": 8,
+    "prompt": "Contrast transactional and analytical workloads.",
+    "answer": [
+      "OLTP systems support the short, concurrent operations that run day-to-day business, such as recording individual orders or updating inventory. OLAP systems support analytical work over many records, often aggregating historical data across several dimensions. The terms describe workload goals, so the distinction is more useful than merely labeling one database operational and the other a warehouse.",
+      "Transactional designs emphasize correct concurrent updates and predictable point lookups, while analytical designs emphasize large scans and efficient summaries. Schemas, indexes, storage layouts, and ingestion processes follow those needs. Moving operational data into an analytical system can isolate expensive reporting work, but introduces freshness and reconciliation considerations. SQL can be used in both kinds of system; the query language alone does not determine the workload."
+    ],
+    "code": "",
+    "language": "sql",
+    "pitfalls": [
+      "Equating OLAP with a different query language.",
+      "Ignoring analytical data freshness after separating workloads."
+    ],
+    "followups": [
+      "Study extension: compare operational and reporting access patterns.",
+      "Study extension: explain why a reporting scan can affect transactional latency."
+    ],
+    "sourceUrl": "https://learn.microsoft.com/en-us/azure/architecture/data-guide/relational-data/online-transaction-processing",
+    "provenance": {
+      "kind": "candidate-reported",
+      "scope": "reported-question",
+      "url": "https://www.linkedin.com/posts/rabi-sankar-mahata_i-thought-i-knew-sql-until-my-interviewer-activity-7390002172161114112-I-4I",
+      "author": "Rabi Sankar Mahata",
+      "title": "Self-reported SQL interview question list",
+      "company": null,
+      "role": null,
+      "experience": null,
+      "note": "Self-reported question list; employer and interview context not stated. Not independently verified. Question paraphrased; answer independently written.",
+      "accessedAt": "2026-11-18"
+    }
+  },
+  {
+    "id": "li-sql-c021",
+    "subject": "sql",
+    "topic": "Indexes",
+    "subtopic": "SQL Server rowstore index organization",
+    "title": "Clustered and nonclustered indexes",
+    "difficulty": "Intermediate",
+    "type": "Concept",
+    "minutes": 8,
+    "prompt": "Explain clustered versus nonclustered rowstore indexes using SQL Server terminology.",
+    "answer": [
+      "In SQL Server rowstore storage, a clustered index uses its leaf level for the table's data rows, organized by the clustered key. A table can have one such organization. A nonclustered index has a separate structure containing its keys and row locators, and can include additional columns to satisfy a query without extra base-row lookups.",
+      "The locator is the clustered key for a clustered table or a row identifier for a heap. A wide clustered key can therefore add storage and maintenance cost to nonclustered indexes. Clustering does not guarantee the presentation order of a SELECT without ORDER BY, and a primary key is not inherently the same concept as a clustered index. These implementation details should not be generalized unchanged to PostgreSQL or other engines."
+    ],
+    "code": "",
+    "language": "sql",
+    "pitfalls": [
+      "Treating primary keys and clustered indexes as synonyms.",
+      "Assuming physical organization guarantees query output order."
+    ],
+    "followups": [
+      "Study extension: compare a key lookup with a covering index.",
+      "Study extension: explain the cost of a wide clustering key."
+    ],
+    "sourceUrl": "https://learn.microsoft.com/en-us/sql/relational-databases/indexes/clustered-and-nonclustered-indexes-described",
+    "provenance": {
+      "kind": "candidate-reported",
+      "scope": "reported-topic",
+      "url": "https://www.linkedin.com/posts/vidya-ravindran-tcr_dotnet-angular-webdevelopment-activity-7399711914211274752-uG7w",
+      "author": "Vidya Ravindran",
+      "title": "Angular, .NET Core, and SQL technical interview",
+      "company": null,
+      "role": null,
+      "experience": "10+ years",
+      "accessedAt": "2026-11-18",
+      "note": "Self-reported interview experience; not independently verified. Question paraphrased; answer independently written."
+    }
+  },
+  {
+    "id": "li-sql-c022",
+    "subject": "sql",
+    "topic": "Stored routines",
+    "subtopic": "SQL Server execution routines versus expressions",
+    "title": "Procedures and functions",
+    "difficulty": "Intermediate",
+    "type": "Concept",
+    "minutes": 8,
+    "prompt": "Compare stored procedures and user-defined functions in SQL Server.",
+    "answer": [
+      "In SQL Server, a stored procedure is invoked as an executable routine and can carry out a sequence of operations, modify data, return result sets, and expose output parameters. A user-defined function returns a scalar or a table value and can participate in supported query expressions. Its composability comes with restrictions that make it different from a general-purpose procedure.",
+      "A Transact-SQL function cannot modify database state in the way a procedure can, and cannot simply call arbitrary stored procedures. Choose based on the operation's contract, side effects, and how callers need to consume its result. Do not assume the word function means faster: scalar function execution and inlining depend on SQL Server version and eligibility, so inspect the resulting plan for performance-sensitive uses."
+    ],
+    "code": "",
+    "language": "sql",
+    "pitfalls": [
+      "Trying to use a procedure as a scalar query expression.",
+      "Assuming every scalar function call is automatically inexpensive or inlined."
+    ],
+    "followups": [
+      "Study extension: compare scalar and inline table-valued functions.",
+      "Study extension: choose a routine for a multi-step data change."
+    ],
+    "sourceUrl": "https://learn.microsoft.com/en-us/sql/relational-databases/user-defined-functions/user-defined-functions",
+    "provenance": {
+      "kind": "candidate-reported",
+      "scope": "reported-topic",
+      "url": "https://www.linkedin.com/posts/vidya-ravindran-tcr_dotnet-angular-webdevelopment-activity-7399711914211274752-uG7w",
+      "author": "Vidya Ravindran",
+      "title": "Angular, .NET Core, and SQL technical interview",
+      "company": null,
+      "role": null,
+      "experience": "10+ years",
+      "accessedAt": "2026-11-18",
+      "note": "Self-reported interview experience; not independently verified. Question paraphrased; answer independently written."
+    }
+  },
+  {
+    "id": "li-sql-c023",
+    "subject": "sql",
+    "topic": "Triggers",
+    "subtopic": "SQL Server inserted and deleted transition rows",
+    "title": "Inserted and deleted tables",
+    "difficulty": "Intermediate",
+    "type": "Concept",
+    "minutes": 8,
+    "prompt": "Explain SQL Server's inserted and deleted tables, sometimes called magic tables.",
+    "answer": [
+      "SQL Server supplies inserted and deleted logical tables inside DML triggers. inserted contains the new row versions for inserts and updates; deleted contains the prior versions for deletes and updates. An update therefore makes both versions available. The engine manages these tables, and trigger code reads them to reason about the affected changes rather than creating or editing them directly.",
+      "They can hold many rows because one statement can affect many records. Write joins and set-based operations instead of assigning a single arbitrary row to scalar variables. For an update comparison, relate old and new rows using a reliable key and handle null transitions deliberately. These names and their behavior are SQL Server terminology, not portable global tables available to ordinary queries."
+    ],
+    "code": "",
+    "language": "sql",
+    "pitfalls": [
+      "Assuming each trigger invocation affects exactly one row.",
+      "Treating inserted and deleted as permanent tables outside the trigger."
+    ],
+    "followups": [
+      "Study extension: compare old and new values for a multirow update.",
+      "Study extension: handle a value changing to or from null."
+    ],
+    "sourceUrl": "https://learn.microsoft.com/en-us/sql/relational-databases/triggers/use-the-inserted-and-deleted-tables",
+    "provenance": {
+      "kind": "candidate-reported",
+      "scope": "reported-topic",
+      "url": "https://www.linkedin.com/posts/vidya-ravindran-tcr_dotnet-angular-webdevelopment-activity-7399711914211274752-uG7w",
+      "author": "Vidya Ravindran",
+      "title": "Angular, .NET Core, and SQL technical interview",
+      "company": null,
+      "role": null,
+      "experience": "10+ years",
+      "accessedAt": "2026-11-18",
+      "note": "Self-reported interview experience; not independently verified. Question paraphrased; answer independently written."
+    }
+  },
+  {
+    "id": "li-sql-c024",
+    "subject": "sql",
+    "topic": "Temporary tables",
+    "subtopic": "SQL Server local and global temporary table scope",
+    "title": "Temporary-table scope",
+    "difficulty": "Intermediate",
+    "type": "Concept",
+    "minutes": 8,
+    "prompt": "Explain local and global temporary tables and their scope in SQL Server.",
+    "answer": [
+      "In SQL Server, a local temporary table uses a single # prefix and is generally visible within its creating session and eligible nested execution scopes. A global temporary table uses ## and can be visible to other sessions. These objects are temporary database tables, commonly stored in tempdb, rather than permanent application tables or query-local CTE names.",
+      "Lifetime also depends on creation scope. A local temporary table created inside a stored procedure is dropped when that procedure ends, while a session-created one normally survives until session termination or explicit removal. A caller cannot assume a nested procedure's temporary table remains afterward. Global temporary tables require additional coordination between sessions. Verify the target platform's lifetime rules and avoid shared names when isolation between users is required."
+    ],
+    "code": "",
+    "language": "sql",
+    "pitfalls": [
+      "Assuming all local temporary tables last for the entire connection.",
+      "Using a global temporary table without coordinating concurrent sessions."
+    ],
+    "followups": [
+      "Study extension: describe visibility from a nested stored procedure.",
+      "Study extension: distinguish a temporary table from a table variable."
+    ],
+    "sourceUrl": "https://learn.microsoft.com/en-us/sql/t-sql/statements/create-table-transact-sql",
+    "provenance": {
+      "kind": "candidate-reported",
+      "scope": "reported-topic",
+      "url": "https://www.linkedin.com/posts/vidya-ravindran-tcr_dotnet-angular-webdevelopment-activity-7399711914211274752-uG7w",
+      "author": "Vidya Ravindran",
+      "title": "Angular, .NET Core, and SQL technical interview",
+      "company": null,
+      "role": null,
+      "experience": "10+ years",
+      "accessedAt": "2026-11-18",
+      "note": "Self-reported interview experience; not independently verified. Question paraphrased; answer independently written."
+    }
+  },
+  {
+    "id": "li-sql-c025",
+    "subject": "sql",
+    "topic": "Error handling",
+    "subtopic": "SQL Server TRY CATCH and transaction state",
+    "title": "Handle SQL errors",
+    "difficulty": "Advanced",
+    "type": "Concept",
+    "minutes": 10,
+    "prompt": "Explain SQL Server exception handling and how a failed transaction should be handled.",
+    "answer": [
+      "SQL Server's TRY and CATCH blocks let a routine handle many execution errors and expose details through error-information functions. A catch block should preserve a useful failure signal rather than silently reporting success. THROW can rethrow the original error from the handler. The handler's responsibility includes deciding what to do with any transaction affected by the failure.",
+      "Check transaction state because some errors leave a transaction uncommittable: XACT_STATE returns -1 for that condition, and rollback is required before normal writes can continue. A procedure must also respect whether it owns the transaction or was called inside another one. TRY CATCH does not catch every possible failure, such as certain same-scope compilation errors or a broken connection. Document the routine's transaction and error contract."
+    ],
+    "code": "",
+    "language": "sql",
+    "pitfalls": [
+      "Catching an error and committing an uncommittable transaction.",
+      "Suppressing an exception while returning a success-like result."
+    ],
+    "followups": [
+      "Study extension: explain XACT_STATE and @@TRANCOUNT.",
+      "Study extension: preserve the original exception with THROW."
+    ],
+    "sourceUrl": "https://learn.microsoft.com/en-us/sql/t-sql/language-elements/try-catch-transact-sql",
+    "provenance": {
+      "kind": "candidate-reported",
+      "scope": "reported-topic",
+      "url": "https://www.linkedin.com/posts/vidya-ravindran-tcr_dotnet-angular-webdevelopment-activity-7399711914211274752-uG7w",
+      "author": "Vidya Ravindran",
+      "title": "Angular, .NET Core, and SQL technical interview",
+      "company": null,
+      "role": null,
+      "experience": "10+ years",
+      "accessedAt": "2026-11-18",
+      "note": "Self-reported interview experience; not independently verified. Question paraphrased; answer independently written."
+    }
+  },
+  {
+    "id": "li-sql-c026",
+    "subject": "sql",
+    "topic": "Triggers",
+    "subtopic": "Automatic SQL Server reactions to database events",
+    "title": "Database triggers",
+    "difficulty": "Intermediate",
+    "type": "Concept",
+    "minutes": 8,
+    "prompt": "Explain what a trigger does and discuss suitable uses and implementation risks.",
+    "answer": [
+      "A trigger runs automatically in response to a configured database event. SQL Server supports DML triggers for data changes as well as other trigger categories. For DML, AFTER triggers run after the triggering action and applicable checks succeed, while INSTEAD OF triggers replace the normal action. Trigger work participates in the operation's transactional behavior and can affect whether it succeeds.",
+      "Use declarative constraints when they express the rule clearly; reserve trigger code for behavior that needs it. Keep the work predictable, set-based, and aware that one statement can change many rows. Hidden side effects, nested activity, and expensive operations can complicate debugging and increase transaction duration. Explain how the design prevents unintended recursion and how failures reach the caller before proposing a trigger for auditing or enforcement."
+    ],
+    "code": "",
+    "language": "sql",
+    "pitfalls": [
+      "Writing a single-row trigger for a multirow statement.",
+      "Introducing hidden expensive work into every data change."
+    ],
+    "followups": [
+      "Study extension: compare AFTER with INSTEAD OF triggers.",
+      "Study extension: choose between a declarative constraint and a trigger."
+    ],
+    "sourceUrl": "https://learn.microsoft.com/en-us/sql/t-sql/statements/create-trigger-transact-sql",
+    "provenance": {
+      "kind": "candidate-reported",
+      "scope": "reported-topic",
+      "url": "https://www.linkedin.com/posts/vidya-ravindran-tcr_dotnet-angular-webdevelopment-activity-7399711914211274752-uG7w",
+      "author": "Vidya Ravindran",
+      "title": "Angular, .NET Core, and SQL technical interview",
+      "company": null,
+      "role": null,
+      "experience": "10+ years",
+      "accessedAt": "2026-11-18",
+      "note": "Self-reported interview experience; not independently verified. Question paraphrased; answer independently written."
+    }
+  },
+  {
+    "id": "li-sql-c027",
+    "subject": "sql",
+    "topic": "Data modeling",
+    "subtopic": "Reducing redundancy through functional dependencies",
+    "title": "Database normalization",
+    "difficulty": "Intermediate",
+    "type": "Concept",
+    "minutes": 8,
+    "prompt": "Explain database normalization and the anomalies it is intended to prevent.",
+    "answer": [
+      "Normalization organizes relational data according to its dependencies so facts are not redundantly stored in ways that create inconsistent updates. Explain the functional dependencies and candidate keys before mechanically dividing a wide table. Repeatedly storing a single fact in several rows can produce update, insertion, and deletion anomalies when the application must keep those copies synchronized.",
+      "At an interview-study level, first normal form removes repeating groups under the chosen relational representation; second normal form removes partial dependencies of non-key attributes on a candidate key; third normal form addresses inappropriate transitive dependencies. A decomposition should preserve the information through a lossless join. Denormalization may be justified for a measured workload, but requires a deliberate plan to maintain duplicated facts. The source reports normalization as a topic without supplying the exact question."
+    ],
+    "code": "",
+    "language": "sql",
+    "pitfalls": [
+      "Splitting tables without identifying dependencies or ensuring lossless reconstruction.",
+      "Claiming normalization alone guarantees the fastest analytical queries."
+    ],
+    "followups": [
+      "Study extension: identify an update anomaly in a proposed schema.",
+      "Study extension: explain a deliberate denormalization trade-off."
+    ],
+    "sourceUrl": "https://learn.microsoft.com/en-us/previous-versions/troubleshoot/microsoft-365/microsoft-365-apps/access/database-normalization-description",
+    "provenance": {
+      "kind": "candidate-reported",
+      "scope": "reported-topic",
+      "url": "https://www.linkedin.com/posts/kriti-jaiswal1-_internship-interviewexperience-paidpartnership-activity-7345660140550766592-8o4x",
+      "author": "Kriti Jaiswal",
+      "title": "G.E. Digital internship interview",
+      "company": "G.E. Digital",
+      "role": "Internship",
+      "experience": null,
+      "note": "Self-reported interview topic in a promotional post; not independently verified. Exact wording not supplied. Study question and answer independently written.",
+      "accessedAt": "2026-11-18"
+    }
+  }
+]

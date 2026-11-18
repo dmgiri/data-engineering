@@ -1,0 +1,119 @@
+[
+  {
+    "id": "li-postgres-b001-001",
+    "subject": "postgres",
+    "topic": "Application concurrency",
+    "subtopic": "Preventing inventory overselling",
+    "title": "Prevent concurrent inventory overselling",
+    "difficulty": "Advanced",
+    "type": "Scenario",
+    "minutes": 12,
+    "prompt": "How could PostgreSQL prevent two concurrent customers from buying the last available item?",
+    "answer": [
+      "Keep the available quantity in a single inventory row and make the check and decrement one conditional UPDATE. At PostgreSQL's default Read Committed isolation, concurrent updates of the same row wait for each other; after the first updater commits, PostgreSQL re-evaluates the second update's condition against the updated row. With one unit left, only one update can return a row. A zero-row result means the application must decline or retry according to its business rules, not create a successful order.",
+      "Insert the corresponding order in the same transaction and commit both changes together; roll back if the order cannot be created. A CHECK constraint preventing negative quantities is useful defense, but all writers must use an appropriate atomic protocol. Use an idempotency key for request retries so a lost response does not reserve stock twice. This single-row example does not establish a solution for multi-item orders, remote payments, or distributed inventory; those require additional design, including consistent lock ordering and recovery for external side effects."
+    ],
+    "code": "-- Study assumptions: inventory has one row per product and a nonnegative quantity.\nBEGIN;\nUPDATE inventory\nSET quantity = quantity - 1\nWHERE product_id = 42 AND quantity > 0\nRETURNING product_id, quantity;\n-- Only if one row was returned, insert the order in this transaction.\nCOMMIT;",
+    "language": "sql",
+    "pitfalls": [
+      "Reading the quantity separately and then writing a previously calculated value, allowing a race.",
+      "Creating an order after the conditional update returned no row, or claiming success before commit.",
+      "Assuming the example handles retries, payment coordination, or multiple inventory rows by itself."
+    ],
+    "followups": [
+      "What happens to the second UPDATE if the first transaction rolls back?",
+      "How would you prevent a client retry after an ambiguous response from ordering twice?"
+    ],
+    "sourceUrl": "https://www.postgresql.org/docs/current/transaction-iso.html",
+    "provenance": {
+      "kind": "candidate-reported",
+      "url": "https://www.linkedin.com/posts/sai-duddukuri-b012b21a6_systemdesign-postgres-acid-activity-7354275817750716418-DrjB",
+      "author": "Sai Duddukuri",
+      "title": "PostgreSQL consistency in a startup system-design interview",
+      "company": null,
+      "role": null,
+      "experience": null,
+      "accessedAt": "2026-11-18",
+      "scope": "reported-question",
+      "note": "Self-reported interview experience; not independently verified. Question paraphrased and answer independently written. A single inventory row and idempotency are added study assumptions."
+    }
+  },
+  {
+    "id": "li-postgres-b001-002",
+    "subject": "postgres",
+    "topic": "Transactions",
+    "subtopic": "Transaction boundaries and atomicity",
+    "title": "Explain PostgreSQL transaction boundaries",
+    "difficulty": "Intermediate",
+    "type": "Concept",
+    "minutes": 10,
+    "prompt": "What is a transaction, and how can PostgreSQL group related changes into one atomic unit?",
+    "answer": [
+      "A transaction groups database statements into an all-or-nothing unit. In PostgreSQL, BEGIN starts an explicit transaction block, COMMIT makes its successful changes permanent, and ROLLBACK discards them. Intermediate changes are not visible to other transactions before commit. For example, a transfer can debit one account and credit another in one transaction, so an error or explicit rollback does not leave only one side applied. Without an explicit block, each successful statement is ordinarily committed in its own transaction.",
+      "Atomicity alone does not prove a transfer is valid: verify that both accounts exist, the debit is allowed, and the amount is positive. The application must roll back if any required check fails. Concurrent transfers also need a suitable locking or isolation strategy, with retry handling where appropriate. A SAVEPOINT can mark a point within a transaction to which work can be rolled back, but it is not an independently committed transaction. External actions such as sending a payment or email are outside PostgreSQL's atomic commit."
+    ],
+    "code": "-- Study assumptions: both account IDs exist, amount is positive, and business checks pass.\nBEGIN;\nUPDATE accounts SET balance = balance - 100 WHERE id = 1;\nUPDATE accounts SET balance = balance + 100 WHERE id = 2;\nCOMMIT;\n-- On a failed check or statement, issue ROLLBACK instead.",
+    "language": "sql",
+    "pitfalls": [
+      "Assuming separate autocommitted statements form one atomic transfer.",
+      "Committing after an account check fails or treating a savepoint as an independent commit.",
+      "Assuming a database rollback can undo an external payment or email."
+    ],
+    "followups": [
+      "What should happen if the credit account does not exist?",
+      "How could concurrent transfers acquire account locks in a consistent order?"
+    ],
+    "sourceUrl": "https://www.postgresql.org/docs/current/tutorial-transactions.html",
+    "provenance": {
+      "kind": "candidate-reported",
+      "url": "https://www.linkedin.com/posts/naffiziqbal_postgresql-transactions-explained-with-a-activity-7496230019481137153-8PyX",
+      "author": "Nafiz Iqbal",
+      "title": "PostgreSQL transactions and a full-stack interview",
+      "company": null,
+      "role": "Full Stack Engineer",
+      "experience": null,
+      "accessedAt": "2026-11-18",
+      "scope": "reported-topic",
+      "note": "Self-reported interview experience; not independently verified. The author reports a general transaction question and frames the post around PostgreSQL; the transfer scenario and transaction-boundary focus are added study assumptions. Answer independently written."
+    }
+  },
+  {
+    "id": "li-postgres-b001-003",
+    "subject": "postgres",
+    "topic": "Application concurrency",
+    "subtopic": "Single-use coupon redemption",
+    "title": "Prevent concurrent duplicate coupon redemption",
+    "difficulty": "Advanced",
+    "type": "Scenario",
+    "minutes": 12,
+    "prompt": "How would you ensure that two concurrent requests cannot redeem the same single-use coupon? Study adaptation: PostgreSQL; the reported system-design question did not mandate an engine.",
+    "answer": [
+      "Represent each coupon by one uniquely identified row. In one transaction, select the eligible row FOR UPDATE, then change its redemption state and record the redemption before committing. A concurrent transaction trying to lock the same row waits. Under Read Committed, once the first transaction commits, the waiting SELECT checks the updated row again; if the eligibility predicate no longer matches, it returns no row. If the first transaction rolls back, the other request can acquire the row and proceed. The application must make its decision from the result actually returned.",
+      "Keep the transaction short and avoid external network calls while holding the lock. A unique constraint on the coupon identifier protects the data model, and a unique redemption constraint can provide another invariant if redemption records are stored separately. Treat retries carefully: a request identifier can distinguish a retry of the winning request from a different redemption attempt. At stronger isolation levels a concurrent transaction may instead receive a serialization failure; retry the complete transaction when that occurs. These choices assume one globally single-use coupon, rather than one use per customer."
+    ],
+    "code": "-- Study assumptions: coupons.code is unique; one successful redemption per code.\nBEGIN;\nSELECT code FROM coupons\nWHERE code = 'ABC123' AND redeemed = false\nFOR UPDATE;\n-- Only if the SELECT returned a row:\nUPDATE coupons SET redeemed = true WHERE code = 'ABC123';\n-- Insert the redemption record here in the same transaction.\nCOMMIT;",
+    "language": "sql",
+    "pitfalls": [
+      "Running the locking SELECT and UPDATE in separate autocommitted transactions.",
+      "Updating or recording a redemption when the locking SELECT returned no row.",
+      "Keeping the row locked during a slow external call or failing to handle transaction retries."
+    ],
+    "followups": [
+      "What changes if a coupon may be redeemed once per customer rather than once globally?",
+      "How would you distinguish a network retry from a competing redemption request?"
+    ],
+    "sourceUrl": "https://www.postgresql.org/docs/current/explicit-locking.html",
+    "provenance": {
+      "kind": "candidate-reported",
+      "url": "https://www.linkedin.com/posts/phanuwat-wattanapraya-7b9529a2_systemdesign-techleadership-concurrencycontrol-activity-7326499305823830017-hOqs",
+      "author": "Phanuwat Wattanapraya",
+      "title": "Concurrent coupon redemption system-design interview",
+      "company": null,
+      "role": null,
+      "experience": null,
+      "accessedAt": "2026-11-18",
+      "scope": "reported-question",
+      "note": "Self-reported interview experience; not independently verified. The interview question was database-agnostic; the author proposed PostgreSQL among possible solutions. Single-row schema and retry details are added study assumptions. Answer independently written."
+    }
+  }
+]

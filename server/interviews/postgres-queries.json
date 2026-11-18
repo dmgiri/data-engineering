@@ -1,0 +1,80 @@
+[
+  {
+    "id": "li-postgres-a001",
+    "subject": "postgres",
+    "topic": "Query planning",
+    "subtopic": "Sequential scans and index scans",
+    "title": "Explain PostgreSQL's scan choice",
+    "difficulty": "Intermediate",
+    "type": "Concept",
+    "minutes": 10,
+    "prompt": "How does PostgreSQL choose between a sequential scan and an index scan?",
+    "answer": [
+      "The planner compares estimated costs of applicable access paths within the larger query plan; it does not automatically prefer an index whenever one exists. A sequential scan reads the table in physical order and can be attractive for a small table or a predicate expected to match much of it. An index scan can avoid examining many irrelevant rows, but fetching qualifying heap rows may involve many scattered page accesses. A bitmap scan is another possible path: it collects matching row locations and visits heap pages in physical order. Estimated startup cost, total cost, selectivity, table size, and configured cost assumptions all influence the choice.",
+      "Statistics collected by ANALYZE help estimate how many rows match, including common values and distributions. Compare estimated rows with actual rows using EXPLAIN (ANALYZE, BUFFERS) on a representative, safe SELECT; ANALYZE actually runs the statement. Large discrepancies can suggest stale or insufficient statistics, skew, or correlated conditions. Check index suitability and query predicates as well, then measure a targeted change against the real workload. An index also consumes space and adds write maintenance, so a sequential scan is not by itself evidence of a problem."
+    ],
+    "code": "-- Study assumptions: orders(order_id, customer_id) contains representative data.\n-- EXPLAIN ANALYZE executes this read; run it in an appropriate test environment.\nEXPLAIN (ANALYZE, BUFFERS)\nSELECT order_id FROM orders WHERE customer_id = 42;",
+    "language": "sql",
+    "pitfalls": [
+      "Assuming every sequential scan is a mistake or every matching index must be used.",
+      "Running EXPLAIN ANALYZE on a modifying statement without accounting for its effects.",
+      "Comparing plan costs as though they were measured elapsed milliseconds."
+    ],
+    "followups": [
+      "How could a highly skewed customer_id distribution affect the estimate?",
+      "When might a bitmap heap scan be preferred over an ordinary index scan?"
+    ],
+    "sourceUrl": "https://www.postgresql.org/docs/current/using-explain.html",
+    "provenance": {
+      "kind": "candidate-reported",
+      "url": "https://www.linkedin.com/posts/dev-diegorighi_softwareengineering-java-kafka-activity-7446186725024006144-vsyq",
+      "author": "Diego Righi",
+      "title": "First technical interview: PostgreSQL scan choice",
+      "company": null,
+      "role": null,
+      "experience": null,
+      "accessedAt": "2026-11-18",
+      "scope": "reported-question",
+      "note": "Self-reported interview experience; not independently verified. Question paraphrased and answer independently written. The example table and predicate are study assumptions."
+    }
+  },
+  {
+    "id": "li-postgres-a002",
+    "subject": "postgres",
+    "topic": "Search and retrieval",
+    "subtopic": "Investigating retrieval latency",
+    "title": "Investigate slow PostgreSQL retrieval",
+    "difficulty": "Advanced",
+    "type": "Scenario",
+    "minutes": 12,
+    "prompt": "As a study interpretation of reported interview topics, how would you investigate slow PostgreSQL retrieval?",
+    "answer": [
+      "First define the retrieval request and measure it: record the predicate, ordering, returned row count, data size, representative parameters and latency distribution. For a safe representative SELECT, EXPLAIN (ANALYZE, BUFFERS) shows the executed plan, actual rows and buffer activity. Compare actual with estimated row counts at expensive nodes, paying attention to repeated loops, sorts and filters. A large mismatch can point to statistics or data-distribution assumptions; heavy buffer reads or a sort processing many rows suggest different investigations. ANALYZE executes the statement, so choose the environment and statement deliberately.",
+      "Inspect whether an available index supports the actual operators, filters and ordering, and whether reducing candidates earlier would preserve the required results. For text retrieval PostgreSQL provides full-text search and index support; vector retrieval generally depends on an extension and its particular index and recall trade-offs, rather than a built-in guarantee of one index type. Evaluate any change with representative data, concurrent load and a relevance or recall set as well as latency. Compare before and after, account for index storage and write cost, and check that the returned results still meet the application's retrieval requirements."
+    ],
+    "code": "-- Study assumptions: documents(id, search_vector), with search_vector of type tsvector.\n-- The text-search schema is illustrative, not a reported interview schema.\nEXPLAIN (ANALYZE, BUFFERS)\nSELECT id FROM documents\nWHERE search_vector @@ websearch_to_tsquery('english', 'database performance');",
+    "language": "sql",
+    "pitfalls": [
+      "Treating EXPLAIN without ANALYZE as a measurement of actual execution.",
+      "Optimizing latency while failing to verify retrieval quality and result correctness.",
+      "Assuming vector indexing is built into every PostgreSQL installation."
+    ],
+    "followups": [
+      "Which plan-node measurements would distinguish a poor estimate from excessive I/O?",
+      "How would you compare latency and recall before adopting approximate vector search?"
+    ],
+    "sourceUrl": "https://www.postgresql.org/docs/current/using-explain.html",
+    "provenance": {
+      "kind": "candidate-reported",
+      "url": "https://www.linkedin.com/posts/sabya-sachi-b6b30914_aiengineering-generativeai-systemdesign-activity-7482396653728153600-ZDom",
+      "author": "Sabya Sachi",
+      "title": "AI engineering interview database discussion topics",
+      "company": null,
+      "role": "Senior or Staff AI Engineering",
+      "experience": null,
+      "accessedAt": "2026-11-18",
+      "scope": "reported-topic",
+      "note": "Self-reported interview experience; not independently verified. This is one study interpretation of reported topics, not a quoted question; the answer is independently written. The text-search example and investigation scenario are study assumptions."
+    }
+  }
+]
