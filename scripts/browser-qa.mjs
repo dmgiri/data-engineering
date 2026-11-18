@@ -109,13 +109,19 @@ try{
  await screenshot('study-material-mobile',true);await cdp('Emulation.setDeviceMetricsOverride',{width:1440,height:1050,deviceScaleFactor:1,mobile:false});
  pass('Study material provides 30 searchable days, 302 persisted checkpoints, safe Markdown, resume, and mobile reading');
  await click('[data-view="notes"]');await wait('document.querySelector(".notes-workspace")');
+ assert.equal(await evaluate('Boolean(document.querySelector(".note-sections-pane")&&document.querySelector(".note-pages-pane")&&document.querySelector(".note-editor-shell"))'),true,'Notes must have separate section, page, and editor panes');
+ assert.equal(await evaluate('(()=>{const a=document.querySelector(".note-sections-pane").getBoundingClientRect(),b=document.querySelector(".note-pages-pane").getBoundingClientRect(),c=document.querySelector(".note-editor-shell").getBoundingClientRect();return a.left<b.left&&b.left<c.left})()'),true,'Desktop notes panes must read left to right like OneNote');
  assert.equal(await evaluate('document.querySelectorAll(".note-section-item").length'),1,'A new notebook must start with the default section');
  assert.equal(await evaluate('document.querySelectorAll(".note-list-item").length'),0);
  await evaluate(`window.__notePrompts=['SQL','SQL interview'];window.prompt=()=>window.__notePrompts.shift()`);
  await click('[data-action="new-section"]');await wait('document.querySelectorAll(".note-section-item").length===2');
+ await click('.note-section-item.selected [data-action="section-options"]');
  await click('.note-section-item.selected [data-action="rename-section"]');await wait('document.querySelector(".note-section-item.selected").textContent.includes("SQL interview")');
+ await click('.note-section-item.selected [data-action="section-color"]');await click('[data-section-color="#ff4d67"]');await wait('document.querySelector(".note-section-item.selected").style.getPropertyValue("--section-color")==="#ff4d67"');
  await click('.note-section-item.selected .note-section-toggle');await wait('document.querySelector(".note-section-item.selected .note-section-toggle").getAttribute("aria-expanded")==="false"');
+ assert.equal(await evaluate('document.querySelector(".notes-workspace").classList.contains("pages-collapsed")'),true,'Section collapse must hide its page pane');
  await click('.note-section-item.selected .note-section-toggle');await wait('document.querySelector(".note-section-item.selected .note-section-toggle").getAttribute("aria-expanded")==="true"');
+ await click('[data-action="toggle-sections-pane"]');await wait('document.querySelector(".notes-workspace").classList.contains("sections-collapsed")');await click('[data-action="toggle-sections-pane"]');await wait('!document.querySelector(".notes-workspace").classList.contains("sections-collapsed")');
  await click('[data-action="new-page"]');await fill('#note-title','Window functions');
  await fill('.note-block[data-block-type="text"] textarea','ROW_NUMBER needs a stable tie breaker.');
  await click('[data-add-block="link"]');await fill('.note-block[data-block-type="link"] input[name="label"]','PostgreSQL docs');await fill('.note-block[data-block-type="link"] input[name="url"]','https://www.postgresql.org/docs/current/tutorial-window.html');
@@ -125,7 +131,7 @@ try{
  await click('[data-add-block="table"]');await wait('document.querySelector(".note-block[data-block-type=table]")');
  await fill('.note-block[data-block-type="table"] input[data-cell="0:0"]','Function');await fill('.note-block[data-block-type="table"] input[data-cell="0:1"]','Use');await fill('.note-block[data-block-type="table"] input[data-cell="1:0"]','ROW_NUMBER');await fill('.note-block[data-block-type="table"] input[data-cell="1:1"]','Deduplicate');
  await click('[data-action="save-note"]');await wait('document.querySelectorAll(".note-list-item").length===1');
- const noteSnapshot=await snapshot();assert.equal(noteSnapshot.notes[0].blocks.length,4);assert.equal(noteSnapshot.notes[0].blocks[3].type,'table');assert.equal(noteSnapshot.notes[0].sectionId,noteSnapshot.noteSections.find(section=>section.title==='SQL interview').id);
+ const noteSnapshot=await snapshot();assert.equal(noteSnapshot.notes[0].blocks.length,4);assert.equal(noteSnapshot.notes[0].blocks[3].type,'table');assert.equal(noteSnapshot.notes[0].sectionId,noteSnapshot.noteSections.find(section=>section.title==='SQL interview').id);assert.equal(noteSnapshot.noteSections.find(section=>section.title==='SQL interview').color,'#ff4d67');
  await cdp('Page.reload');await wait('document.querySelector(".course-dashboard")');await click('[data-view="notes"]');await wait('document.querySelector("#note-title")?.value==="Window functions"');
  assert.equal(await evaluate('document.querySelector(".note-section-item.selected").textContent.includes("SQL interview")'),true);
  assert.equal(await evaluate('document.querySelector(".note-preview-link").getAttribute("target")'),'_blank');
@@ -134,7 +140,7 @@ try{
  await screenshot('notes-desktop',true);
  await cdp('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});await delay(250);
  assert.equal(await evaluate('document.documentElement.scrollWidth<=innerWidth'),true,'Notes must not overflow a 390px viewport');
- await screenshot('notes-mobile',true);await evaluate('window.confirm=()=>true');await click('.note-section-item.selected [data-action="delete-section"]');await wait('document.querySelectorAll(".note-list-item").length===0&&document.querySelectorAll(".note-section-item").length===1');
+ await screenshot('notes-mobile',true);await evaluate('window.confirm=()=>true');await click('.note-section-item.selected [data-action="section-options"]');await click('.note-section-item.selected [data-action="delete-section"]');await wait('document.querySelectorAll(".note-list-item").length===0&&document.querySelectorAll(".note-section-item").length===1');
  await cdp('Emulation.setDeviceMetricsOverride',{width:1440,height:1050,deviceScaleFactor:1,mobile:false});pass('OneNote-style sections, pages, text, links, photos and tables persist responsively');
  await click('[data-view="desk"]');await wait('document.querySelector(".course-dashboard")');
  assert.equal(await evaluate('document.querySelectorAll(".mini-calendar-days button").length'),14);await click('[aria-label="Next calendar period"]');await click('.mini-calendar-days button:first-child');await wait('document.querySelector(".today-class-meta").textContent.includes("Day 15")');pass('Two-week calendar selects real plan days');

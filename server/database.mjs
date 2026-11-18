@@ -5,6 +5,7 @@ import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
 const reviewDays = { again: 1, developing: 3, confident: 7 };
+const noteSectionColors=['#7c4dff','#0a84ff','#ff4d67','#ec00a9','#ff9f0a','#30b0c7','#34c759','#8e8e93'];
 const invalid = message => { const error = new Error(message); error.status = 400; throw error; };
 const object = (value, label) => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) invalid(`${label} must be an object.`);
@@ -106,7 +107,7 @@ export function createDatabase(filename = resolve('.data/study.sqlite'), catalog
     );
     CREATE TABLE IF NOT EXISTS note_sections (
       id TEXT PRIMARY KEY, title TEXT NOT NULL, collapsed INTEGER NOT NULL CHECK (collapsed IN (0, 1)),
-      sort_order INTEGER NOT NULL, createdAt TEXT NOT NULL, updatedAt TEXT NOT NULL
+      sort_order INTEGER NOT NULL, color TEXT NOT NULL, createdAt TEXT NOT NULL, updatedAt TEXT NOT NULL
     );
     CREATE TABLE IF NOT EXISTS notes (
       id TEXT PRIMARY KEY, title TEXT NOT NULL, blocks TEXT NOT NULL,
@@ -122,8 +123,13 @@ export function createDatabase(filename = resolve('.data/study.sqlite'), catalog
   const columns=new Set(sqlite.prepare('PRAGMA table_info(questions)').all().map(column=>column.name));
   if(!columns.has('subtopic'))sqlite.exec("ALTER TABLE questions ADD COLUMN subtopic TEXT NOT NULL DEFAULT ''");
   if(!columns.has('provenance'))sqlite.exec('ALTER TABLE questions ADD COLUMN provenance TEXT DEFAULT NULL');
-  const defaultSection={id:'section-default',title:'My Notes',collapsed:0,order:0,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()};
-  sqlite.prepare('INSERT OR IGNORE INTO note_sections VALUES (?, ?, ?, ?, ?, ?)').run(defaultSection.id,defaultSection.title,defaultSection.collapsed,defaultSection.order,defaultSection.createdAt,defaultSection.updatedAt);
+  const sectionColumns=new Set(sqlite.prepare('PRAGMA table_info(note_sections)').all().map(column=>column.name));
+  if(!sectionColumns.has('color')){
+    sqlite.exec("ALTER TABLE note_sections ADD COLUMN color TEXT NOT NULL DEFAULT '#7c4dff'");
+    sqlite.prepare('SELECT id,sort_order FROM note_sections ORDER BY sort_order,id').all().forEach((section,index)=>sqlite.prepare('UPDATE note_sections SET color = ? WHERE id = ?').run(noteSectionColors[index%noteSectionColors.length],section.id));
+  }
+  const defaultSection={id:'section-default',title:'My Notes',collapsed:0,order:0,color:noteSectionColors[0],createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()};
+  sqlite.prepare('INSERT OR IGNORE INTO note_sections (id,title,collapsed,sort_order,color,createdAt,updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?)').run(defaultSection.id,defaultSection.title,defaultSection.collapsed,defaultSection.order,defaultSection.color,defaultSection.createdAt,defaultSection.updatedAt);
   const noteColumns=new Set(sqlite.prepare('PRAGMA table_info(notes)').all().map(column=>column.name));
   const migrateNoteOrder=!noteColumns.has('sort_order');
   if(!noteColumns.has('sectionId'))sqlite.exec('ALTER TABLE notes ADD COLUMN sectionId TEXT REFERENCES note_sections(id)');
@@ -236,7 +242,10 @@ export function createDatabase(filename = resolve('.data/study.sqlite'), catalog
     const title=text(value.title,'Note section title',120).trim();
     if(!title)invalid('Note section title is required.');
     if(typeof value.collapsed!=='boolean')invalid('Note section collapsed state must be true or false.');
-    return {id:id(value.id,'note section id'),title,collapsed:value.collapsed,order:integer(value.order,'Note section order',0,10000),createdAt:createdAt(value.createdAt),updatedAt:restore?createdAt(value.updatedAt):new Date().toISOString()};
+    const order=integer(value.order,'Note section order',0,10000);
+    const color=value.color===undefined?noteSectionColors[order%noteSectionColors.length]:value.color;
+    if(!noteSectionColors.includes(color))invalid('Choose a supported note section color.');
+    return {id:id(value.id,'note section id'),title,color,collapsed:value.collapsed,order,createdAt:createdAt(value.createdAt),updatedAt:restore?createdAt(value.updatedAt):new Date().toISOString()};
   };
   const normalizeNoteBlock=(value,index)=>{
     object(value,`Note block ${index+1}`);
@@ -280,8 +289,8 @@ export function createDatabase(filename = resolve('.data/study.sqlite'), catalog
     ON CONFLICT(section_id) DO UPDATE SET completed=1,updatedAt=excluded.updatedAt`).run(progress.sectionId,progress.updatedAt);
   const putMaterialState=state=>sqlite.prepare(`INSERT INTO material_state VALUES (1, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET material_id=excluded.material_id,day_number=excluded.day_number,section_id=excluded.section_id,updatedAt=excluded.updatedAt`).run(state.materialId,state.day,state.sectionId,state.updatedAt);
-  const putNoteSection=section=>sqlite.prepare(`INSERT INTO note_sections VALUES (?, ?, ?, ?, ?, ?)
-    ON CONFLICT(id) DO UPDATE SET title=excluded.title,collapsed=excluded.collapsed,sort_order=excluded.sort_order,updatedAt=excluded.updatedAt`).run(section.id,section.title,section.collapsed?1:0,section.order,section.createdAt,section.updatedAt);
+  const putNoteSection=section=>sqlite.prepare(`INSERT INTO note_sections (id,title,collapsed,sort_order,color,createdAt,updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET title=excluded.title,collapsed=excluded.collapsed,sort_order=excluded.sort_order,color=excluded.color,updatedAt=excluded.updatedAt`).run(section.id,section.title,section.collapsed?1:0,section.order,section.color,section.createdAt,section.updatedAt);
   const putNote=note=>sqlite.prepare(`INSERT INTO notes (id,title,blocks,createdAt,updatedAt,sectionId,sort_order) VALUES (?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET title=excluded.title,blocks=excluded.blocks,updatedAt=excluded.updatedAt,sectionId=excluded.sectionId,sort_order=excluded.sort_order`).run(note.id,note.title,JSON.stringify(note.blocks),note.createdAt,note.updatedAt,note.sectionId,note.order);
 
@@ -302,7 +311,7 @@ export function createDatabase(filename = resolve('.data/study.sqlite'), catalog
       })),
       resources:resourceRows.filter(resource=>resource.material_id===material.id).map(resource=>({id:resource.id,title:resource.title,markdown:resource.markdown,order:resource.sort_order}))
     }));
-    const noteSections=sqlite.prepare('SELECT id,title,collapsed,sort_order AS "order",createdAt,updatedAt FROM note_sections ORDER BY sort_order, id').all().map(row=>({...row,collapsed:Boolean(row.collapsed)}));
+    const noteSections=sqlite.prepare('SELECT id,title,collapsed,sort_order AS "order",color,createdAt,updatedAt FROM note_sections ORDER BY sort_order, id').all().map(row=>({...row,collapsed:Boolean(row.collapsed)}));
     const notes=sqlite.prepare('SELECT id,title,blocks,createdAt,updatedAt,sectionId,sort_order AS "order" FROM notes ORDER BY sectionId,sort_order,id').all().map(row=>({...row,blocks:JSON.parse(row.blocks)}));
     const savedMaterialState=sqlite.prepare('SELECT material_id AS materialId,day_number AS day,section_id AS sectionId,updatedAt FROM material_state WHERE id = 1').get();
     const progress = {

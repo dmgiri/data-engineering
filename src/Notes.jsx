@@ -1,5 +1,5 @@
 import {useEffect,useMemo,useState} from 'react';
-import {ArrowDown,ArrowUp,ChevronDown,ChevronRight,FilePlus2,FileText,Folder,FolderPlus,Image,Link2,Pencil,Plus,Save,Search,Table2,Trash2,Type} from 'lucide-react';
+import {ArrowDown,ArrowUp,ChevronDown,ChevronLeft,ChevronRight,FilePlus2,FileText,FolderPlus,Image,Link2,MoreHorizontal,NotebookTabs,Palette,PanelLeftClose,PanelLeftOpen,Pencil,Plus,Save,Search,Table2,Trash2,Type} from 'lucide-react';
 import {mutate,notify,uid} from './store';
 
 const copy=value=>JSON.parse(JSON.stringify(value));
@@ -8,6 +8,7 @@ const newPage=(sectionId,order)=>({id:uid(),sectionId,order,title:'',createdAt:n
 const blockFor=type=>type==='link'?{id:uid(),type,label:'',url:''}:type==='image'?{id:uid(),type,name:'',alt:'',dataUrl:''}:type==='table'?{id:uid(),type,rows:[['',''],['','']]}:newTextBlock();
 const safeLink=value=>{try{const parsed=new URL(value);return ['http:','https:'].includes(parsed.protocol)?value:null}catch{return null}};
 const shortDate=value=>new Intl.DateTimeFormat('en-GB',{day:'numeric',month:'short',year:'numeric'}).format(new Date(value));
+const sectionColors=['#7c4dff','#0a84ff','#ff4d67','#ec00a9','#ff9f0a','#30b0c7','#34c759','#8e8e93'];
 
 export default function Notes({data}){
   const sections=data.noteSections||[];
@@ -18,11 +19,16 @@ export default function Notes({data}){
   const [selectedId,setSelectedId]=useState(notes.find(note=>note.sectionId===firstSection)?.id||null);
   const [draft,setDraft]=useState(()=>selectedId?copy(notes.find(note=>note.id===selectedId)):null);
   const [dirty,setDirty]=useState(false);
+  const [sectionsPaneCollapsed,setSectionsPaneCollapsed]=useState(false);
+  const [sectionMenu,setSectionMenu]=useState(null);
+  const [colorMenu,setColorMenu]=useState(null);
   const filtered=useMemo(()=>{
     const value=query.trim().toLowerCase();
     if(!value)return notes;
     return notes.filter(note=>`${note.title} ${note.blocks.map(block=>block.text||block.label||block.alt||(block.rows||[]).flat().join(' ')||'').join(' ')}`.toLowerCase().includes(value));
   },[notes,query]);
+  const selectedSection=sections.find(section=>section.id===selectedSectionId)||sections[0]||null;
+  const selectedPages=filtered.filter(note=>note.sectionId===selectedSection?.id);
   const saved=notes.some(note=>note.id===selectedId);
   useEffect(()=>{
     if(selectedSectionId&&!sections.some(section=>section.id===selectedSectionId))setSelectedSectionId(sections[0]?.id||null);
@@ -34,15 +40,16 @@ export default function Notes({data}){
     else if(!selectedId&&notes.length){setSelectedId(notes[0].id);setSelectedSectionId(notes[0].sectionId);setDraft(copy(notes[0]))}
   },[notes,selectedId,dirty]);
   const confirmDiscard=()=>!dirty||window.confirm('Discard unsaved page changes?');
-  const selectSection=section=>{if(!confirmDiscard())return;setSelectedSectionId(section.id);const page=notes.find(note=>note.sectionId===section.id);setSelectedId(page?.id||null);setDraft(page?copy(page):null);setDirty(false)};
+  const selectSection=section=>{if(!confirmDiscard())return;setSectionMenu(null);setColorMenu(null);setSelectedSectionId(section.id);const page=notes.find(note=>note.sectionId===section.id);setSelectedId(page?.id||null);setDraft(page?copy(page):null);setDirty(false)};
   const selectPage=note=>{if(!confirmDiscard())return;setSelectedSectionId(note.sectionId);setSelectedId(note.id);setDraft(copy(note));setDirty(false)};
   const createSection=async()=>{
     const title=window.prompt('Section name');if(!title?.trim())return;
-    const section={id:uid(),title:title.trim(),collapsed:false,order:sections.length,createdAt:new Date().toISOString()};
+    const section={id:uid(),title:title.trim(),color:sectionColors[sections.length%sectionColors.length],collapsed:false,order:sections.length,createdAt:new Date().toISOString()};
     if(await mutate('/api/note-sections','POST',section)){setSelectedSectionId(section.id);setSelectedId(null);setDraft(null);setDirty(false)}
   };
   const renameSection=async section=>{const title=window.prompt('Rename section',section.title);if(!title?.trim()||title.trim()===section.title)return;await mutate('/api/note-sections','POST',{...section,title:title.trim()})};
   const toggleSection=async section=>{setSelectedSectionId(section.id);await mutate('/api/note-sections','POST',{...section,collapsed:!section.collapsed})};
+  const setSectionColor=async(section,color)=>{if(await mutate('/api/note-sections','POST',{...section,color})){setColorMenu(null);setSectionMenu(null)}};
   const deleteSection=async section=>{
     const count=notes.filter(note=>note.sectionId===section.id).length;
     if(section.id==='section-default'||!window.confirm(`Delete “${section.title}”${count?` and its ${count} page${count===1?'':'s'}`:''}?`))return;
@@ -74,26 +81,34 @@ export default function Notes({data}){
   const save=async event=>{event.preventDefault();if(!draft.title.trim())return notify('Add a page title before saving.');if(draft.blocks.some(block=>block.type==='image'&&!block.dataUrl))return notify('Choose an image or remove the empty image block.');if(await mutate('/api/notes','POST',draft)){setDirty(false);notify('Page saved to SQLite.')}};
   const remove=async()=>{if(!saved||!window.confirm('Delete this page permanently?'))return;if(await mutate('/api/notes/'+selectedId,'DELETE',{})){setDirty(false);setSelectedId(null);setDraft(null);notify('Page deleted.')}};
   return <div className="notes-page">
-    <div className="notes-heading"><div><span>LOCAL STUDY NOTEBOOK</span><h1>My notes</h1><p>Organize study material into sections and flexible pages.</p></div><div className="notes-heading-actions"><button className="subtle-button" data-action="new-section" onClick={createSection}><FolderPlus size={16}/>New section</button><button className="primary-button" data-action="new-page" onClick={()=>createPage()}><FilePlus2 size={16}/>New page</button></div></div>
-    <div className="notes-workspace">
-      <aside className="notes-index" aria-label="Notebook sections and pages">
-        <label className="notes-search"><Search size={15}/><input value={query} onChange={event=>setQuery(event.target.value)} placeholder="Search pages" aria-label="Search pages"/></label>
-        <div className="note-tree">{sections.map(section=>{
-          const pages=filtered.filter(note=>note.sectionId===section.id);
+    <div className={`notes-workspace ${sectionsPaneCollapsed?'sections-collapsed':''} ${selectedSection?.collapsed?'pages-collapsed':''}`} style={{'--active-section-color':selectedSection?.color||sectionColors[0]}}>
+      <aside className="note-sections-pane" aria-label="Notebook sections">
+        <header className="note-notebook-header"><span><NotebookTabs size={18}/><strong>My notebook</strong></span><button type="button" data-action="toggle-sections-pane" aria-label={sectionsPaneCollapsed?'Expand section pane':'Collapse section pane'} aria-expanded={!sectionsPaneCollapsed} onClick={()=>setSectionsPaneCollapsed(value=>!value)}>{sectionsPaneCollapsed?<PanelLeftOpen size={16}/>:<PanelLeftClose size={16}/>}</button></header>
+        <div className="note-section-list">{sections.map(section=>{
           const selected=section.id===selectedSectionId;
-          return <section key={section.id} className={`note-section-item ${selected?'selected':''}`} data-section-id={section.id}>
-            <header>
-              <button type="button" className="note-section-toggle" aria-label={`${section.collapsed?'Expand':'Collapse'} ${section.title}`} aria-expanded={!section.collapsed} onClick={()=>toggleSection(section)}>{section.collapsed?<ChevronRight size={15}/>:<ChevronDown size={15}/>}</button>
-              <button type="button" className="note-section-name" onClick={()=>selectSection(section)}><Folder size={15}/><span>{section.title}</span><small>{notes.filter(note=>note.sectionId===section.id).length}</small></button>
-              {selected&&<span className="note-section-actions"><button type="button" data-action="rename-section" aria-label={`Rename ${section.title}`} onClick={()=>renameSection(section)}><Pencil size={13}/></button>{section.id!=='section-default'&&<button type="button" data-action="delete-section" aria-label={`Delete ${section.title}`} onClick={()=>deleteSection(section)}><Trash2 size={13}/></button>}</span>}
-            </header>
-            {!section.collapsed&&<div className="note-section-pages">{pages.map(note=><button key={note.id} className={`note-list-item ${note.id===selectedId?'active':''}`} onClick={()=>selectPage(note)}><FileText size={15}/><span><strong>{note.title}</strong><small>{shortDate(note.updatedAt)}</small></span></button>)}{!pages.length&&<div className="note-section-empty">{query?'No matching pages':'No pages'}</div>}<button type="button" className="note-inline-add" onClick={()=>createPage(section.id)}><Plus size={13}/>Add page</button></div>}
+          const pageCount=notes.filter(note=>note.sectionId===section.id).length;
+          return <section key={section.id} className={`note-section-item ${selected?'selected':''}`} data-section-id={section.id} style={{'--section-color':section.color}}>
+            <div className="note-section-row">
+              <button type="button" className="note-section-select" title={section.title} onClick={()=>selectSection(section)}><i/><NotebookTabs size={15}/><span className="note-section-copy"><strong>{section.title}</strong><small>{pageCount}</small></span></button>
+              {selected&&<span className="note-section-actions"><button type="button" className="note-section-toggle" aria-label={`${section.collapsed?'Expand':'Collapse'} ${section.title} pages`} aria-expanded={!section.collapsed} onClick={()=>toggleSection(section)}>{section.collapsed?<ChevronRight size={14}/>:<ChevronDown size={14}/>}</button><button type="button" data-action="section-options" aria-label={`Section options for ${section.title}`} aria-expanded={sectionMenu===section.id} onClick={()=>{setSectionMenu(sectionMenu===section.id?null:section.id);setColorMenu(null)}}><MoreHorizontal size={14}/></button></span>}
+            </div>
+            {selected&&sectionMenu===section.id&&<div className="note-section-tools"><div><button type="button" data-action="section-color" aria-label={`Choose color for ${section.title}`} onClick={()=>setColorMenu(colorMenu===section.id?null:section.id)}><Palette size={13}/>Color</button><button type="button" data-action="rename-section" aria-label={`Rename ${section.title}`} onClick={()=>renameSection(section)}><Pencil size={13}/>Rename</button>{section.id!=='section-default'&&<button type="button" data-action="delete-section" aria-label={`Delete ${section.title}`} onClick={()=>deleteSection(section)}><Trash2 size={13}/>Delete</button>}</div>{colorMenu===section.id&&<div className="note-color-palette" aria-label={`Section colors for ${section.title}`}>{sectionColors.map(color=><button key={color} type="button" data-section-color={color} aria-label={`Use ${color}`} aria-pressed={section.color===color} style={{'--swatch':color}} onClick={()=>setSectionColor(section,color)}/>)}</div>}</div>}
           </section>})}</div>
+        <button type="button" className="note-new-section" data-action="new-section" onClick={createSection}><FolderPlus size={15}/><span>New section</span></button>
+      </aside>
+      <aside className="note-pages-pane" aria-label={selectedSection?`${selectedSection.title} pages`:'Pages'}>
+        {selectedSection?.collapsed?<button type="button" className="note-pages-expand" aria-label={`Expand ${selectedSection.title} pages`} onClick={()=>toggleSection(selectedSection)}><ChevronRight size={17}/></button>:<div className="note-pages-content">
+          <header className="note-pages-header"><div><span style={{background:selectedSection?.color}}/><strong>{selectedSection?.title||'Pages'}</strong></div><button type="button" aria-label="Collapse page pane" onClick={()=>selectedSection&&toggleSection(selectedSection)}><ChevronLeft size={16}/></button></header>
+          <button type="button" className="note-add-page" data-action="new-page" onClick={()=>createPage()}><FilePlus2 size={15}/>Add page</button>
+          <label className="notes-search"><Search size={14}/><input value={query} onChange={event=>setQuery(event.target.value)} placeholder="Search pages" aria-label="Search pages"/></label>
+          <div className="note-page-list">{selectedPages.map(note=><button key={note.id} className={`note-list-item ${note.id===selectedId?'active':''}`} onClick={()=>selectPage(note)}><FileText size={15}/><span><strong>{note.title}</strong><small>{shortDate(note.updatedAt)}</small></span></button>)}{!selectedPages.length&&<div className="note-section-empty"><FileText size={18}/><span>{query?'No matching pages':'No pages in this section'}</span></div>}</div>
+        </div>}
       </aside>
       <section className="note-editor-shell">
         {!draft?<div className="note-editor-empty"><FileText size={28}/><h2>{sections.length?'Choose or create a page.':'Your notebook is ready.'}</h2><p>Pages can mix written notes, links, photos, and editable tables.</p><button className="primary-button" data-action="new-page" onClick={()=>createPage()}><Plus size={16}/>Create page</button></div>:
         <form className="note-editor" onSubmit={save}>
-          <div className="note-editor-top"><div><span>{saved?'SAVED PAGE':'NEW PAGE'}{dirty?' · UNSAVED':''}</span><input id="note-title" value={draft.title} onChange={event=>changePage({title:event.target.value})} placeholder="Page title" maxLength={200} aria-label="Page title"/></div><div>{saved&&<button type="button" className="note-delete" data-action="delete-note" onClick={remove}><Trash2 size={15}/>Delete</button>}<button className="primary-button" data-action="save-note"><Save size={15}/>Save page</button></div></div>
+          <div className="note-editor-section"><i/><span>{selectedSection?.title}</span></div>
+          <div className="note-editor-top"><div><span>{saved?'SAVED PAGE':'NEW PAGE'}{dirty?' · UNSAVED':''}</span><input id="note-title" value={draft.title} onChange={event=>changePage({title:event.target.value})} placeholder="Page title" maxLength={200} aria-label="Page title"/><small>{shortDate(draft.updatedAt||draft.createdAt)}</small></div><div>{saved&&<button type="button" className="note-delete" data-action="delete-note" onClick={remove}><Trash2 size={15}/>Delete</button>}<button className="primary-button" data-action="save-note"><Save size={15}/>Save page</button></div></div>
           <div className="note-blocks">{draft.blocks.map((block,index)=><article className="note-block" data-block-type={block.type} key={block.id}>
             <header><span>{block.type==='text'?<Type size={14}/>:block.type==='link'?<Link2 size={14}/>:block.type==='image'?<Image size={14}/>:<Table2 size={14}/>} {block.type}</span><div><button type="button" aria-label="Move block up" disabled={index===0} onClick={()=>moveBlock(index,-1)}><ArrowUp size={14}/></button><button type="button" aria-label="Move block down" disabled={index===draft.blocks.length-1} onClick={()=>moveBlock(index,1)}><ArrowDown size={14}/></button><button type="button" aria-label="Remove block" onClick={()=>removeBlock(block.id)}><Trash2 size={14}/></button></div></header>
             {block.type==='text'&&<textarea value={block.text} onChange={event=>changeBlock(block.id,{text:event.target.value})} placeholder="Write your notes…" rows={7} maxLength={100000}/>}

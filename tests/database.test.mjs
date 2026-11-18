@@ -134,7 +134,8 @@ test('note sections organize pages, persist collapse state, validate tables and 
   const {database,filename}=databaseFixture(t);
   const initial=database.bootstrap();
   assert.deepEqual(initial.noteSections.map(section=>section.title),['My Notes']);
-  const section={id:'section-sql',title:'SQL',collapsed:false,order:1,createdAt:'2026-11-18T08:00:00.000Z'};
+  assert.equal(initial.noteSections[0].color,'#7c4dff');
+  const section={id:'section-sql',title:'SQL',color:'#0a84ff',collapsed:false,order:1,createdAt:'2026-11-18T08:00:00.000Z'};
   database.saveNoteSection(section);
   const page={
     id:'page-window',sectionId:'section-sql',order:0,title:'Window functions',createdAt:'2026-11-18T08:05:00.000Z',
@@ -144,8 +145,11 @@ test('note sections organize pages, persist collapse state, validate tables and 
   assert.equal(saved.notes[0].sectionId,'section-sql');
   assert.equal(saved.notes[0].order,0);
   assert.deepEqual(saved.notes[0].blocks[0].rows,page.blocks[0].rows);
-  database.saveNoteSection({...section,title:'SQL interview',collapsed:true});
-  assert.equal(database.bootstrap().noteSections.find(item=>item.id==='section-sql').collapsed,true);
+  database.saveNoteSection({...section,title:'SQL interview',color:'#ff4d67',collapsed:true});
+  const recolored=database.bootstrap().noteSections.find(item=>item.id==='section-sql');
+  assert.equal(recolored.collapsed,true);
+  assert.equal(recolored.color,'#ff4d67');
+  assert.throws(()=>database.saveNoteSection({...section,color:'#123456'}),error=>error.status===400);
   const count=database.bootstrap().notes.length;
   assert.throws(()=>database.saveNote({...page,id:'unknown-section',sectionId:'missing'}),error=>error.status===400);
   assert.throws(()=>database.saveNote({...page,id:'bad-table',blocks:[{id:'bad',type:'table',rows:[['a'],['b','c']]}]}),error=>error.status===400);
@@ -156,7 +160,7 @@ test('note sections organize pages, persist collapse state, validate tables and 
   database.close();
   const reopened=createDatabase(filename,catalog);
   try{
-    assert.equal(reopened.bootstrap().noteSections.find(item=>item.id==='section-sql').collapsed,true);
+    assert.equal(reopened.bootstrap().noteSections.find(item=>item.id==='section-sql').color,'#ff4d67');
     const afterDelete=reopened.deleteNoteSection('section-sql');
     assert.equal(afterDelete.noteSections.some(item=>item.id==='section-sql'),false);
     assert.equal(afterDelete.notes.some(item=>item.id==='page-window'),false);
