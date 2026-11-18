@@ -117,6 +117,9 @@ try{
  await click('[data-action="notes-theme"]');await wait('document.documentElement.dataset.theme==="dark"');await click('[data-action="notes-theme"]');await wait('document.documentElement.dataset.theme==="light"');
  assert.equal(await evaluate('Boolean(document.querySelector(".note-sections-pane")&&document.querySelector(".note-pages-pane")&&document.querySelector(".note-editor-shell"))'),true,'Notes must have separate section, page, and editor panes');
  assert.equal(await evaluate('(()=>{const a=document.querySelector(".note-sections-pane").getBoundingClientRect(),b=document.querySelector(".note-pages-pane").getBoundingClientRect(),c=document.querySelector(".note-editor-shell").getBoundingClientRect();return a.left<b.left&&b.left<c.left})()'),true,'Desktop notes panes must read left to right like OneNote');
+ assert.equal(await evaluate('(()=>{const bar=document.querySelector(".note-command-bar"),canvas=document.querySelector(".note-page-canvas");return Boolean(bar&&canvas&&bar.getBoundingClientRect().bottom<=canvas.getBoundingClientRect().top+1)})()'),true,'OneNote editor must place its insert ribbon above a continuous page canvas');
+ assert.equal(await evaluate('document.querySelectorAll(".note-command-bar [data-add-block]").length'),5,'OneNote insert ribbon must expose text, URL, photo, table, and code');
+ assert.equal(await evaluate('document.querySelectorAll(".note-builder-toolbar").length'),0,'OneNote page must not use a bottom form-builder toolbar');
  assert.equal(await evaluate('document.querySelectorAll(".note-section-item").length'),1,'A new notebook must start with the default section');
  assert.equal(await evaluate('document.querySelectorAll(".note-list-item").length'),0);
  await evaluate(`window.__notePrompts=['SQL','SQL interview'];window.prompt=()=>window.__notePrompts.shift()`);
@@ -133,7 +136,9 @@ try{
  assert.equal(await evaluate('(()=>{const width=document.querySelector(".note-sections-pane").getBoundingClientRect().width;return width<=66&&width<window.__noteExpandedWidths.sections/3})()'),true,'Collapsed section pane must shrink to an icon rail');
  await click('[data-action="toggle-sections-pane"]');await wait('!document.querySelector(".notes-workspace").classList.contains("sections-collapsed")');
  await click('[data-action="new-page"]');await fill('#note-title','Window functions');
+ assert.equal(await evaluate('(()=>{const title=document.querySelector("#note-title").getBoundingClientRect(),date=document.querySelector(".note-editor-top small").getBoundingClientRect();return date.top>=title.bottom-1&&date.left<=title.left+2})()'),true,'OneNote page date and time must sit below the title at the left edge');
  await fill('.note-block[data-block-type="text"] textarea','ROW_NUMBER needs a stable tie breaker.');
+ assert.equal(await evaluate('document.querySelector(".note-block[data-block-type=text] textarea").getBoundingClientRect().height<=180'),true,'OneNote text region must size to its content instead of leaving a large form-card gap');
  await click('[data-add-block="link"]');await fill('.note-block[data-block-type="link"] input[name="label"]','PostgreSQL docs');await fill('.note-block[data-block-type="link"] input[name="url"]','https://www.postgresql.org/docs/current/tutorial-window.html');
  await click('[data-add-block="image"]');
  await evaluate(`(()=>{const input=document.querySelector('.note-block[data-block-type="image"] input[type="file"]'),file=new File([new Uint8Array([137,80,78,71])],'window-plan.png',{type:'image/png'}),transfer=new DataTransfer();transfer.items.add(file);Object.defineProperty(input,'files',{value:transfer.files,configurable:true});input.dispatchEvent(new Event('change',{bubbles:true}))})()`);
