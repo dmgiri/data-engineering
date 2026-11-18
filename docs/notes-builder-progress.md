@@ -12,3 +12,4 @@
 - OneNote extension: SQLite now stores sections, page membership, order, and independent collapse state; existing notes migrate into `My Notes`.
 - OneNote extension: the responsive notebook tree supports creating, renaming, expanding, collapsing, and deleting sections plus nested page creation.
 - OneNote extension: pages can mix text, safe links, local photos, and editable tables; desktop and 390 px workflows are browser-tested.
+- OneNote extension verified with 36/36 Node tests, a production build, 22/22 Chrome checks, and live migration of existing pages into the default section.
