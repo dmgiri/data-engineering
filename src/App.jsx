@@ -86,7 +86,7 @@ export default function App(){
           {view==='desk'&&<Overview data={data} current={current} dayComplete={dayComplete} onNavigate={navigate} onOpen={openQuestion} onStart={startTimer} onLog={()=>setModal({type:'session'})} renderQuestion={(q,index)=><QuestionRow key={q.id} q={q} data={data} index={index}/>}/>}
           {view==='library'&&<QuestionLibrary data={data} renderSubjectIcon={id=><SubjectIcon id={id} size={15}/>} renderQuestion={(q,index)=><QuestionRow key={q.id} q={q} data={data} index={index}/>}/>}
           {view==='material'&&<Suspense fallback={<div className="material-loading"><NotebookTabs size={22}/><span>Opening study material…</span></div>}><StudyMaterial key={`${state.materialDay||'resume'}-${state.materialSectionId||''}`} data={data} initialDay={state.materialDay} initialSectionId={state.materialSectionId} onExit={()=>navigate('desk')} onTheme={()=>mutate('/api/settings','PUT',{theme:data.settings.theme==='dark'?'light':'dark'})} onNavigate={navigate}/></Suspense>} 
-          {view==='notes'&&<Suspense fallback={<div className="material-loading"><NotebookPen size={22}/><span>Opening your notes…</span></div>}><Notes data={data}/></Suspense>}
+          {view==='notes'&&<Suspense fallback={<div className="material-loading"><NotebookPen size={22}/><span>Opening your notes…</span></div>}><Notes data={data} onExit={()=>navigate('desk')}/></Suspense>}
           {view==='plan'&&<Plan data={data} onMaterial={day=>go('material',{materialDay:day,materialSectionId:null})}/>} 
           {view==='study'&&<Study key={state.questionId} questionId={state.questionId} data={data} onTimer={startTimer}/>}
           {view==='journal'&&<Journal data={data} onSession={session=>setModal({type:'session',session})}/>}

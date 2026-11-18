@@ -17,6 +17,7 @@
 | Notebook page pane expand | Selected section chevron | The separate page pane appears and its contents fade 4 px into place; chevron and `aria-expanded` also change | Implemented |
 | Notebook section rail collapse | Pane button | The section rail becomes a compact color-tab rail; the editor gains space immediately | Implemented |
 | Section color menu | Palette button | Color choices fade in beside the selected section | Implemented |
+| Enter or exit full-window Notes | My notes or Exit notes control | The existing screen transition fades the new view over 140 ms; the notebook itself does not animate its dimensions | Implemented |
 
 ## Deliberately not animated
 

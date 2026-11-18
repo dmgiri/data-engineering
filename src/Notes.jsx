@@ -1,16 +1,17 @@
 import {useEffect,useMemo,useState} from 'react';
-import {ArrowDown,ArrowUp,ChevronDown,ChevronLeft,ChevronRight,FilePlus2,FileText,FolderPlus,Image,Link2,MoreHorizontal,NotebookTabs,Palette,PanelLeftClose,PanelLeftOpen,Pencil,Plus,Save,Search,Table2,Trash2,Type} from 'lucide-react';
+import {ArrowDown,ArrowUp,ChevronDown,ChevronLeft,ChevronRight,Code2,FilePlus2,FileText,FolderPlus,Image,Link2,LogOut,MoreHorizontal,NotebookTabs,Palette,PanelLeftClose,PanelLeftOpen,Pencil,Plus,Save,Search,Table2,Trash2,Type} from 'lucide-react';
 import {mutate,notify,uid} from './store';
 
 const copy=value=>JSON.parse(JSON.stringify(value));
 const newTextBlock=()=>({id:uid(),type:'text',text:''});
 const newPage=(sectionId,order)=>({id:uid(),sectionId,order,title:'',createdAt:new Date().toISOString(),blocks:[newTextBlock()]});
-const blockFor=type=>type==='link'?{id:uid(),type,label:'',url:''}:type==='image'?{id:uid(),type,name:'',alt:'',dataUrl:''}:type==='table'?{id:uid(),type,rows:[['',''],['','']]}:newTextBlock();
+const blockFor=type=>type==='link'?{id:uid(),type,label:'',url:''}:type==='image'?{id:uid(),type,name:'',alt:'',dataUrl:''}:type==='table'?{id:uid(),type,rows:[['',''],['','']]}:type==='code'?{id:uid(),type,language:'sql',code:''}:newTextBlock();
 const safeLink=value=>{try{const parsed=new URL(value);return ['http:','https:'].includes(parsed.protocol)?value:null}catch{return null}};
 const shortDate=value=>new Intl.DateTimeFormat('en-GB',{day:'numeric',month:'short',year:'numeric'}).format(new Date(value));
 const sectionColors=['#7c4dff','#0a84ff','#ff4d67','#ec00a9','#ff9f0a','#30b0c7','#34c759','#8e8e93'];
+const codeLanguages=['sql','postgresql','python','pyspark','scala','json','bash','text'];
 
-export default function Notes({data}){
+export default function Notes({data,onExit}){
   const sections=data.noteSections||[];
   const notes=data.notes||[];
   const firstSection=notes[0]?.sectionId||sections[0]?.id||null;
@@ -25,7 +26,7 @@ export default function Notes({data}){
   const filtered=useMemo(()=>{
     const value=query.trim().toLowerCase();
     if(!value)return notes;
-    return notes.filter(note=>`${note.title} ${note.blocks.map(block=>block.text||block.label||block.alt||(block.rows||[]).flat().join(' ')||'').join(' ')}`.toLowerCase().includes(value));
+    return notes.filter(note=>`${note.title} ${note.blocks.map(block=>block.text||block.label||block.alt||block.code||(block.rows||[]).flat().join(' ')||'').join(' ')}`.toLowerCase().includes(value));
   },[notes,query]);
   const selectedSection=sections.find(section=>section.id===selectedSectionId)||sections[0]||null;
   const selectedPages=filtered.filter(note=>note.sectionId===selectedSection?.id);
@@ -80,10 +81,11 @@ export default function Notes({data}){
   };
   const save=async event=>{event.preventDefault();if(!draft.title.trim())return notify('Add a page title before saving.');if(draft.blocks.some(block=>block.type==='image'&&!block.dataUrl))return notify('Choose an image or remove the empty image block.');if(await mutate('/api/notes','POST',draft)){setDirty(false);notify('Page saved to SQLite.')}};
   const remove=async()=>{if(!saved||!window.confirm('Delete this page permanently?'))return;if(await mutate('/api/notes/'+selectedId,'DELETE',{})){setDirty(false);setSelectedId(null);setDraft(null);notify('Page deleted.')}};
+  const exitNotes=()=>{if(confirmDiscard())onExit?.()};
   return <div className="notes-page">
     <div className={`notes-workspace ${sectionsPaneCollapsed?'sections-collapsed':''} ${selectedSection?.collapsed?'pages-collapsed':''}`} style={{'--active-section-color':selectedSection?.color||sectionColors[0]}}>
       <aside className="note-sections-pane" aria-label="Notebook sections">
-        <header className="note-notebook-header"><span><NotebookTabs size={18}/><strong>My notebook</strong></span><button type="button" data-action="toggle-sections-pane" aria-label={sectionsPaneCollapsed?'Expand section pane':'Collapse section pane'} aria-expanded={!sectionsPaneCollapsed} onClick={()=>setSectionsPaneCollapsed(value=>!value)}>{sectionsPaneCollapsed?<PanelLeftOpen size={16}/>:<PanelLeftClose size={16}/>}</button></header>
+        <header className="note-notebook-header"><span><NotebookTabs size={18}/><strong>My notebook</strong></span><div><button type="button" data-action="exit-notes" aria-label="Exit notes" title="Exit notes" onClick={exitNotes}><LogOut size={16}/></button><button type="button" data-action="toggle-sections-pane" aria-label={sectionsPaneCollapsed?'Expand section pane':'Collapse section pane'} aria-expanded={!sectionsPaneCollapsed} onClick={()=>setSectionsPaneCollapsed(value=>!value)}>{sectionsPaneCollapsed?<PanelLeftOpen size={16}/>:<PanelLeftClose size={16}/>}</button></div></header>
         <div className="note-section-list">{sections.map(section=>{
           const selected=section.id===selectedSectionId;
           const pageCount=notes.filter(note=>note.sectionId===section.id).length;
@@ -105,18 +107,19 @@ export default function Notes({data}){
         </div>}
       </aside>
       <section className="note-editor-shell">
-        {!draft?<div className="note-editor-empty"><FileText size={28}/><h2>{sections.length?'Choose or create a page.':'Your notebook is ready.'}</h2><p>Pages can mix written notes, links, photos, and editable tables.</p><button className="primary-button" data-action="new-page" onClick={()=>createPage()}><Plus size={16}/>Create page</button></div>:
+        {!draft?<div className="note-editor-empty"><FileText size={28}/><h2>{sections.length?'Choose or create a page.':'Your notebook is ready.'}</h2><p>Pages can mix written notes, links, photos, tables, and code snippets.</p><button className="primary-button" data-action="new-page" onClick={()=>createPage()}><Plus size={16}/>Create page</button></div>:
         <form className="note-editor" onSubmit={save}>
           <div className="note-editor-section"><i/><span>{selectedSection?.title}</span></div>
           <div className="note-editor-top"><div><span>{saved?'SAVED PAGE':'NEW PAGE'}{dirty?' · UNSAVED':''}</span><input id="note-title" value={draft.title} onChange={event=>changePage({title:event.target.value})} placeholder="Page title" maxLength={200} aria-label="Page title"/><small>{shortDate(draft.updatedAt||draft.createdAt)}</small></div><div>{saved&&<button type="button" className="note-delete" data-action="delete-note" onClick={remove}><Trash2 size={15}/>Delete</button>}<button className="primary-button" data-action="save-note"><Save size={15}/>Save page</button></div></div>
           <div className="note-blocks">{draft.blocks.map((block,index)=><article className="note-block" data-block-type={block.type} key={block.id}>
-            <header><span>{block.type==='text'?<Type size={14}/>:block.type==='link'?<Link2 size={14}/>:block.type==='image'?<Image size={14}/>:<Table2 size={14}/>} {block.type}</span><div><button type="button" aria-label="Move block up" disabled={index===0} onClick={()=>moveBlock(index,-1)}><ArrowUp size={14}/></button><button type="button" aria-label="Move block down" disabled={index===draft.blocks.length-1} onClick={()=>moveBlock(index,1)}><ArrowDown size={14}/></button><button type="button" aria-label="Remove block" onClick={()=>removeBlock(block.id)}><Trash2 size={14}/></button></div></header>
+            <header><span>{block.type==='text'?<Type size={14}/>:block.type==='link'?<Link2 size={14}/>:block.type==='image'?<Image size={14}/>:block.type==='code'?<Code2 size={14}/>:<Table2 size={14}/>} {block.type}</span><div><button type="button" aria-label="Move block up" disabled={index===0} onClick={()=>moveBlock(index,-1)}><ArrowUp size={14}/></button><button type="button" aria-label="Move block down" disabled={index===draft.blocks.length-1} onClick={()=>moveBlock(index,1)}><ArrowDown size={14}/></button><button type="button" aria-label="Remove block" onClick={()=>removeBlock(block.id)}><Trash2 size={14}/></button></div></header>
             {block.type==='text'&&<textarea value={block.text} onChange={event=>changeBlock(block.id,{text:event.target.value})} placeholder="Write your notes…" rows={7} maxLength={100000}/>}
             {block.type==='link'&&<div className="note-link-fields"><label>Link label<input name="label" value={block.label} onChange={event=>changeBlock(block.id,{label:event.target.value})} placeholder="PostgreSQL documentation" maxLength={300}/></label><label>URL<input name="url" type="url" value={block.url} onChange={event=>changeBlock(block.id,{url:event.target.value})} placeholder="https://…" maxLength={2000}/></label>{safeLink(block.url)&&<a className="note-preview-link" href={block.url} target="_blank" rel="noreferrer"><Link2 size={14}/>{block.label||block.url}</a>}</div>}
             {block.type==='image'&&<div className="note-image-fields"><label className="note-image-picker"><Image size={17}/><span>{block.name||'Choose image · max 2 MB'}</span><input className="note-image-input" type="file" accept="image/png,image/jpeg,image/webp,image/gif" onChange={event=>upload(block,event.target.files?.[0])}/></label>{block.dataUrl&&<div className="note-image-preview"><img src={block.dataUrl} alt={block.alt}/></div>}<label>Image description<input name="alt" value={block.alt} onChange={event=>changeBlock(block.id,{alt:event.target.value})} placeholder="Describe this image" maxLength={500}/></label></div>}
             {block.type==='table'&&<div className="note-table-editor"><div className="note-table-scroll"><table><tbody>{block.rows.map((row,rowIndex)=><tr key={rowIndex}>{row.map((cell,columnIndex)=><td key={columnIndex}><input data-cell={`${rowIndex}:${columnIndex}`} aria-label={`Row ${rowIndex+1}, column ${columnIndex+1}`} value={cell} maxLength={2000} onChange={event=>changeCell(block,rowIndex,columnIndex,event.target.value)}/></td>)}</tr>)}</tbody></table></div><div className="note-table-actions"><button type="button" onClick={()=>addRow(block)} disabled={block.rows.length>=20}>+ Row</button><button type="button" onClick={()=>addColumn(block)} disabled={block.rows[0].length>=10}>+ Column</button><button type="button" onClick={()=>removeRow(block)} disabled={block.rows.length<=1}>− Row</button><button type="button" onClick={()=>removeColumn(block)} disabled={block.rows[0].length<=1}>− Column</button></div></div>}
+            {block.type==='code'&&<div className="note-code-editor"><label>Language<select value={block.language} onChange={event=>changeBlock(block.id,{language:event.target.value})}>{codeLanguages.map(language=><option key={language} value={language}>{language}</option>)}</select></label><textarea value={block.code} onChange={event=>changeBlock(block.id,{code:event.target.value})} placeholder="Paste or write code…" rows={10} maxLength={100000} spellCheck="false"/></div>}
           </article>)}</div>
-          <div className="note-builder-toolbar" aria-label="Add page block"><span>Add to page</span><button type="button" data-add-block="text" onClick={()=>addBlock('text')}><Type size={15}/>Text</button><button type="button" data-add-block="link" onClick={()=>addBlock('link')}><Link2 size={15}/>Link</button><button type="button" data-add-block="image" onClick={()=>addBlock('image')}><Image size={15}/>Photo</button><button type="button" data-add-block="table" onClick={()=>addBlock('table')}><Table2 size={15}/>Table</button></div>
+          <div className="note-builder-toolbar" aria-label="Add page block"><span>Add to page</span><button type="button" data-add-block="text" onClick={()=>addBlock('text')}><Type size={15}/>Text</button><button type="button" data-add-block="link" onClick={()=>addBlock('link')}><Link2 size={15}/>URL</button><button type="button" data-add-block="image" onClick={()=>addBlock('image')}><Image size={15}/>Photo</button><button type="button" data-add-block="table" onClick={()=>addBlock('table')}><Table2 size={15}/>Table</button><button type="button" data-add-block="code" onClick={()=>addBlock('code')}><Code2 size={15}/>Code</button></div>
         </form>}
       </section>
     </div>
