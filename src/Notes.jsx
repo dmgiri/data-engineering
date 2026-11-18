@@ -39,8 +39,8 @@ export default function Notes({data,onExit,onTheme}){
     if(dirty)return;
     const note=notes.find(item=>item.id===selectedId);
     if(note){setDraft(copy(note));setSelectedSectionId(note.sectionId)}
-    else if(!selectedId&&notes.length){setSelectedId(notes[0].id);setSelectedSectionId(notes[0].sectionId);setDraft(copy(notes[0]))}
-  },[notes,selectedId,dirty]);
+    else if(selectedId){const fallback=notes.find(item=>item.sectionId===selectedSectionId)||notes[0]||null;setSelectedId(fallback?.id||null);setDraft(fallback?copy(fallback):null);if(fallback)setSelectedSectionId(fallback.sectionId)}
+  },[notes,selectedId,selectedSectionId,dirty]);
   const confirmDiscard=()=>!dirty||window.confirm('Discard unsaved page changes?');
   const selectSection=section=>{if(!confirmDiscard())return;setSectionMenu(null);setColorMenu(null);setSelectedSectionId(section.id);const page=notes.find(note=>note.sectionId===section.id);setSelectedId(page?.id||null);setDraft(page?copy(page):null);setDirty(false)};
   const selectPage=note=>{if(!confirmDiscard())return;setSelectedSectionId(note.sectionId);setSelectedId(note.id);setDraft(copy(note));setDirty(false)};

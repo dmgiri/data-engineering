@@ -155,6 +155,10 @@ try{
  assert.equal(await evaluate('document.querySelector(".note-image-preview img").alt'),'Window ranking sketch');
  assert.equal(await evaluate('document.querySelector(".note-block[data-block-type=table] input[data-cell=\\"1:0\\"]").value'),'ROW_NUMBER');
  assert.equal(await evaluate('document.querySelector(".note-code-editor select").value'),'python');assert.equal(await evaluate('document.querySelector(".note-code-editor textarea").value'),'rows = sorted(rows, key=lambda row: row["event_time"])');
+ await evaluate('window.prompt=()=>"Empty section"');await click('[data-action="new-section"]');await wait('[...document.querySelectorAll(".note-section-item")].some(item=>item.textContent.includes("Empty section"))');await delay(200);
+ assert.equal(await evaluate('document.querySelector(".note-section-item.selected")?.textContent.includes("Empty section")&&Boolean(document.querySelector(".note-editor-empty"))'),true,'Selecting an empty section must not jump back to the first note');
+ await evaluate('window.confirm=()=>true');await click('.note-section-item.selected [data-action="section-options"]');await click('.note-section-item.selected [data-action="delete-section"]');await wait('![...document.querySelectorAll(".note-section-item")].some(item=>item.textContent.includes("Empty section"))');
+ await evaluate('[...document.querySelectorAll(".note-section-item")].find(item=>item.textContent.includes("SQL interview")).querySelector(".note-section-select").click()');await wait('document.querySelector(".note-section-item.selected").textContent.includes("SQL interview")');
  await screenshot('notes-desktop',true);
  await evaluate('document.querySelector(".note-code-editor").scrollIntoView({block:"center"})');await screenshot('notes-code',true);await evaluate('document.querySelector(".note-editor-shell").scrollTo(0,0)');
  await cdp('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});await delay(250);
