@@ -104,9 +104,14 @@ export function createDatabase(filename = resolve('.data/study.sqlite'), catalog
       id INTEGER PRIMARY KEY CHECK (id = 1), material_id TEXT NOT NULL REFERENCES study_materials(id),
       day_number INTEGER NOT NULL, section_id TEXT NOT NULL REFERENCES material_sections(id), updatedAt TEXT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS note_sections (
+      id TEXT PRIMARY KEY, title TEXT NOT NULL, collapsed INTEGER NOT NULL CHECK (collapsed IN (0, 1)),
+      sort_order INTEGER NOT NULL, createdAt TEXT NOT NULL, updatedAt TEXT NOT NULL
+    );
     CREATE TABLE IF NOT EXISTS notes (
       id TEXT PRIMARY KEY, title TEXT NOT NULL, blocks TEXT NOT NULL,
-      createdAt TEXT NOT NULL, updatedAt TEXT NOT NULL
+      createdAt TEXT NOT NULL, updatedAt TEXT NOT NULL,
+      sectionId TEXT REFERENCES note_sections(id), sort_order INTEGER NOT NULL DEFAULT 0
     );
     CREATE INDEX IF NOT EXISTS sessions_date ON sessions(date);
     CREATE INDEX IF NOT EXISTS attempts_date ON attempts(date);
@@ -117,6 +122,14 @@ export function createDatabase(filename = resolve('.data/study.sqlite'), catalog
   const columns=new Set(sqlite.prepare('PRAGMA table_info(questions)').all().map(column=>column.name));
   if(!columns.has('subtopic'))sqlite.exec("ALTER TABLE questions ADD COLUMN subtopic TEXT NOT NULL DEFAULT ''");
   if(!columns.has('provenance'))sqlite.exec('ALTER TABLE questions ADD COLUMN provenance TEXT DEFAULT NULL');
+  const defaultSection={id:'section-default',title:'My Notes',collapsed:0,order:0,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()};
+  sqlite.prepare('INSERT OR IGNORE INTO note_sections VALUES (?, ?, ?, ?, ?, ?)').run(defaultSection.id,defaultSection.title,defaultSection.collapsed,defaultSection.order,defaultSection.createdAt,defaultSection.updatedAt);
+  const noteColumns=new Set(sqlite.prepare('PRAGMA table_info(notes)').all().map(column=>column.name));
+  const migrateNoteOrder=!noteColumns.has('sort_order');
+  if(!noteColumns.has('sectionId'))sqlite.exec('ALTER TABLE notes ADD COLUMN sectionId TEXT REFERENCES note_sections(id)');
+  if(migrateNoteOrder)sqlite.exec('ALTER TABLE notes ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0');
+  sqlite.prepare('UPDATE notes SET sectionId = ? WHERE sectionId IS NULL OR sectionId = ?').run(defaultSection.id,'');
+  if(migrateNoteOrder)sqlite.prepare('SELECT id FROM notes ORDER BY updatedAt, id').all().forEach((note,order)=>sqlite.prepare('UPDATE notes SET sort_order = ? WHERE id = ?').run(order,note.id));
   function transaction(work) {
     sqlite.exec('BEGIN IMMEDIATE');
     try { const result = work(); sqlite.exec('COMMIT'); return result; }
@@ -213,11 +226,29 @@ export function createDatabase(filename = resolve('.data/study.sqlite'), catalog
     if(value.completed!==true)invalid('Completed material progress must be true.');
     return {sectionId:section.sectionId,completed:true,updatedAt:createdAt(value.updatedAt)};
   };
+  const knownNoteSection=value=>{
+    const sectionId=id(value,'note section id');
+    if(!sqlite.prepare('SELECT 1 FROM note_sections WHERE id = ?').get(sectionId))invalid('Unknown note section.');
+    return sectionId;
+  };
+  const normalizeNoteSection=(value,restore=false)=>{
+    object(value,'Note section');
+    const title=text(value.title,'Note section title',120).trim();
+    if(!title)invalid('Note section title is required.');
+    if(typeof value.collapsed!=='boolean')invalid('Note section collapsed state must be true or false.');
+    return {id:id(value.id,'note section id'),title,collapsed:value.collapsed,order:integer(value.order,'Note section order',0,10000),createdAt:createdAt(value.createdAt),updatedAt:restore?createdAt(value.updatedAt):new Date().toISOString()};
+  };
   const normalizeNoteBlock=(value,index)=>{
     object(value,`Note block ${index+1}`);
     const blockId=id(value.id,`note block ${index+1} id`);
-    if(!['text','link','image'].includes(value.type))invalid(`Note block ${index+1} has an unsupported type.`);
+    if(!['text','link','image','table'].includes(value.type))invalid(`Note block ${index+1} has an unsupported type.`);
     if(value.type==='text')return {id:blockId,type:'text',text:text(value.text,'Note text',100000)};
+    if(value.type==='table'){
+      if(!Array.isArray(value.rows)||value.rows.length<1||value.rows.length>20)invalid('A note table must contain 1 to 20 rows.');
+      const width=Array.isArray(value.rows[0])?value.rows[0].length:0;
+      if(width<1||width>10||value.rows.some(row=>!Array.isArray(row)||row.length!==width))invalid('A note table must contain 1 to 10 columns with equal row lengths.');
+      return {id:blockId,type:'table',rows:value.rows.map((row,rowIndex)=>row.map((cell,columnIndex)=>text(cell,`Table cell ${rowIndex+1}:${columnIndex+1}`,2000)))};
+    }
     if(value.type==='link'){
       const label=text(value.label,'Link label',300),urlValue=text(value.url,'Link URL',2000);
       let parsed;try{parsed=new URL(urlValue)}catch{invalid('Link URL must be valid.')}
@@ -228,14 +259,16 @@ export function createDatabase(filename = resolve('.data/study.sqlite'), catalog
     if(!/^data:image\/(?:png|jpeg|webp|gif);base64,[a-zA-Z0-9+/]+={0,2}$/.test(dataUrl))invalid('Use a PNG, JPEG, WebP, or GIF image.');
     return {id:blockId,type:'image',name,alt,dataUrl};
   };
-  const normalizeNote=(value,restore=false)=>{
+  const normalizeNote=(value,restore=false,allowedSections=null)=>{
     object(value,'Note');
     const title=text(value.title,'Note title',200).trim();
     if(!title)invalid('Note title is required.');
     if(!Array.isArray(value.blocks)||value.blocks.length<1||value.blocks.length>100)invalid('A note must contain 1 to 100 blocks.');
     const blocks=value.blocks.map(normalizeNoteBlock);
     if(new Set(blocks.map(block=>block.id)).size!==blocks.length)invalid('Note blocks must have unique ids.');
-    return {id:id(value.id,'note id'),title,blocks,createdAt:createdAt(value.createdAt),updatedAt:restore?createdAt(value.updatedAt):new Date().toISOString()};
+    const sectionId=value.sectionId===undefined?'section-default':id(value.sectionId,'note section id');
+    if(allowedSections?!allowedSections.has(sectionId):!sqlite.prepare('SELECT 1 FROM note_sections WHERE id = ?').get(sectionId))invalid('Unknown note section.');
+    return {id:id(value.id,'note id'),sectionId,order:integer(value.order??0,'Note order',0,100000),title,blocks,createdAt:createdAt(value.createdAt),updatedAt:restore?createdAt(value.updatedAt):new Date().toISOString()};
   };
   const putSettings = settings => sqlite.prepare('UPDATE settings SET name = ?, weekdayMinutes = ?, weekendMinutes = ?, startDate = ?, theme = ? WHERE id = 1').run(settings.name, settings.weekdayMinutes, settings.weekendMinutes, settings.startDate, settings.theme);
   const putSession = session => sqlite.prepare(`INSERT INTO sessions VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET
@@ -247,8 +280,10 @@ export function createDatabase(filename = resolve('.data/study.sqlite'), catalog
     ON CONFLICT(section_id) DO UPDATE SET completed=1,updatedAt=excluded.updatedAt`).run(progress.sectionId,progress.updatedAt);
   const putMaterialState=state=>sqlite.prepare(`INSERT INTO material_state VALUES (1, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET material_id=excluded.material_id,day_number=excluded.day_number,section_id=excluded.section_id,updatedAt=excluded.updatedAt`).run(state.materialId,state.day,state.sectionId,state.updatedAt);
-  const putNote=note=>sqlite.prepare(`INSERT INTO notes VALUES (?, ?, ?, ?, ?)
-    ON CONFLICT(id) DO UPDATE SET title=excluded.title,blocks=excluded.blocks,updatedAt=excluded.updatedAt`).run(note.id,note.title,JSON.stringify(note.blocks),note.createdAt,note.updatedAt);
+  const putNoteSection=section=>sqlite.prepare(`INSERT INTO note_sections VALUES (?, ?, ?, ?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET title=excluded.title,collapsed=excluded.collapsed,sort_order=excluded.sort_order,updatedAt=excluded.updatedAt`).run(section.id,section.title,section.collapsed?1:0,section.order,section.createdAt,section.updatedAt);
+  const putNote=note=>sqlite.prepare(`INSERT INTO notes (id,title,blocks,createdAt,updatedAt,sectionId,sort_order) VALUES (?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET title=excluded.title,blocks=excluded.blocks,updatedAt=excluded.updatedAt,sectionId=excluded.sectionId,sort_order=excluded.sort_order`).run(note.id,note.title,JSON.stringify(note.blocks),note.createdAt,note.updatedAt,note.sectionId,note.order);
 
   function bootstrap() {
     const subjects = sqlite.prepare('SELECT id, name, short, color, description FROM subjects ORDER BY sort_order').all().map(row => ({ ...row }));
@@ -267,7 +302,8 @@ export function createDatabase(filename = resolve('.data/study.sqlite'), catalog
       })),
       resources:resourceRows.filter(resource=>resource.material_id===material.id).map(resource=>({id:resource.id,title:resource.title,markdown:resource.markdown,order:resource.sort_order}))
     }));
-    const notes=sqlite.prepare('SELECT * FROM notes ORDER BY updatedAt DESC, id').all().map(row=>({...row,blocks:JSON.parse(row.blocks)}));
+    const noteSections=sqlite.prepare('SELECT id,title,collapsed,sort_order AS "order",createdAt,updatedAt FROM note_sections ORDER BY sort_order, id').all().map(row=>({...row,collapsed:Boolean(row.collapsed)}));
+    const notes=sqlite.prepare('SELECT id,title,blocks,createdAt,updatedAt,sectionId,sort_order AS "order" FROM notes ORDER BY sectionId,sort_order,id').all().map(row=>({...row,blocks:JSON.parse(row.blocks)}));
     const savedMaterialState=sqlite.prepare('SELECT material_id AS materialId,day_number AS day,section_id AS sectionId,updatedAt FROM material_state WHERE id = 1').get();
     const progress = {
       sessions: sqlite.prepare('SELECT * FROM sessions ORDER BY date, createdAt, id').all().map(row => ({ ...row })),
@@ -294,7 +330,7 @@ export function createDatabase(filename = resolve('.data/study.sqlite'), catalog
       minutes: progress.sessions.filter(session => session.date === value).reduce((sum, session) => sum + session.minutes, 0),
       target: target(value), attempts: progress.attempts.filter(attempt => attempt.date === value).length
     }));
-    return { subjects, questions, materials, notes, settings, progress, plan, daily, database: '.data/study.sqlite' };
+    return { subjects, questions, materials, noteSections, notes, settings, progress, plan, daily, database: '.data/study.sqlite' };
   }
   function mutate(work) { transaction(work); return bootstrap(); }
   let closed = false;
@@ -310,6 +346,16 @@ export function createDatabase(filename = resolve('.data/study.sqlite'), catalog
       return mutate(()=>completed?putMaterialProgress({sectionId:section.sectionId,completed:true,updatedAt:new Date().toISOString()}):sqlite.prepare('DELETE FROM material_progress WHERE section_id = ?').run(section.sectionId));
     },
     saveMaterialState(value){const state=normalizeMaterialState(value);return mutate(()=>putMaterialState(state));},
+    saveNoteSection(value){
+      const section=normalizeNoteSection(value),existing=sqlite.prepare('SELECT createdAt FROM note_sections WHERE id = ?').get(section.id);
+      if(existing)section.createdAt=existing.createdAt;
+      return mutate(()=>putNoteSection(section));
+    },
+    deleteNoteSection(value){
+      const sectionId=knownNoteSection(value);
+      if(sectionId==='section-default')invalid('The default note section cannot be deleted.');
+      return mutate(()=>{sqlite.prepare('DELETE FROM notes WHERE sectionId = ?').run(sectionId);sqlite.prepare('DELETE FROM note_sections WHERE id = ?').run(sectionId)});
+    },
     saveNote(value){
       const note=normalizeNote(value),existing=sqlite.prepare('SELECT createdAt FROM notes WHERE id = ?').get(note.id);
       if(existing)note.createdAt=existing.createdAt;
@@ -356,7 +402,13 @@ export function createDatabase(filename = resolve('.data/study.sqlite'), catalog
       const materialState=hasMaterialState?(progress.materialState===null?null:normalizeMaterialState(progress.materialState)):undefined;
       const hasNotes=Object.hasOwn(value,'notes');
       if(hasNotes&&(!Array.isArray(value.notes)||value.notes.length>10000))invalid('Invalid notes list.');
-      const notes=hasNotes?value.notes.map(note=>normalizeNote(note,true)):[];
+      const hasNoteSections=Object.hasOwn(value,'noteSections');
+      if(hasNoteSections&&(!Array.isArray(value.noteSections)||value.noteSections.length<1||value.noteSections.length>1000))invalid('Invalid note sections list.');
+      const noteSections=hasNoteSections?value.noteSections.map(section=>normalizeNoteSection(section,true)):[];
+      if(hasNoteSections&&new Set(noteSections.map(item=>item.id)).size!==noteSections.length)invalid('Backup contains duplicate note sections.');
+      if(hasNoteSections&&!noteSections.some(item=>item.id==='section-default'))invalid('Backup must contain the default note section.');
+      const allowedSections=new Set((hasNoteSections?noteSections:sqlite.prepare('SELECT id FROM note_sections').all()).map(item=>item.id));
+      const notes=hasNotes?value.notes.map(note=>normalizeNote(hasNoteSections?note:{...note,sectionId:'section-default'},true,allowedSections)):[];
       for (const records of [sessions.map(item => item.id), attempts.map(item => item.id), reviews.map(item => item.id), bookmarks]) {
         if (new Set(records).size !== records.length) invalid('Backup contains duplicate records.');
       }
@@ -371,6 +423,8 @@ export function createDatabase(filename = resolve('.data/study.sqlite'), catalog
         bookmarks.forEach(key => insertBookmark.run(key));
         if(hasMaterialSections){sqlite.exec('DELETE FROM material_progress;');materialSections.forEach(putMaterialProgress)}
         if(hasMaterialState){sqlite.exec('DELETE FROM material_state;');if(materialState)putMaterialState(materialState)}
+        if(hasNoteSections&&hasNotes){sqlite.exec('DELETE FROM notes; DELETE FROM note_sections;');noteSections.forEach(putNoteSection)}
+        else if(hasNoteSections)noteSections.forEach(putNoteSection);
         if(hasNotes){sqlite.exec('DELETE FROM notes;');notes.forEach(putNote)}
       });
     },

@@ -130,6 +130,50 @@ test('notes persist text, safe links and local images while legacy backups prese
   }finally{reopened.close()}
 });
 
+test('note sections organize pages, persist collapse state, validate tables and delete atomically',t=>{
+  const {database,filename}=databaseFixture(t);
+  const initial=database.bootstrap();
+  assert.deepEqual(initial.noteSections.map(section=>section.title),['My Notes']);
+  const section={id:'section-sql',title:'SQL',collapsed:false,order:1,createdAt:'2026-11-18T08:00:00.000Z'};
+  database.saveNoteSection(section);
+  const page={
+    id:'page-window',sectionId:'section-sql',order:0,title:'Window functions',createdAt:'2026-11-18T08:05:00.000Z',
+    blocks:[{id:'table-one',type:'table',rows:[['Function','Use'],['ROW_NUMBER','Deduplicate']]}]
+  };
+  const saved=database.saveNote(page);
+  assert.equal(saved.notes[0].sectionId,'section-sql');
+  assert.equal(saved.notes[0].order,0);
+  assert.deepEqual(saved.notes[0].blocks[0].rows,page.blocks[0].rows);
+  database.saveNoteSection({...section,title:'SQL interview',collapsed:true});
+  assert.equal(database.bootstrap().noteSections.find(item=>item.id==='section-sql').collapsed,true);
+  const count=database.bootstrap().notes.length;
+  assert.throws(()=>database.saveNote({...page,id:'unknown-section',sectionId:'missing'}),error=>error.status===400);
+  assert.throws(()=>database.saveNote({...page,id:'bad-table',blocks:[{id:'bad',type:'table',rows:[['a'],['b','c']]}]}),error=>error.status===400);
+  assert.equal(database.bootstrap().notes.length,count,'invalid page writes must be atomic');
+  const backup=database.exportBackup();
+  assert.equal(backup.noteSections.some(item=>item.id==='section-sql'),true);
+  assert.equal(backup.notes.find(item=>item.id==='page-window').sectionId,'section-sql');
+  database.close();
+  const reopened=createDatabase(filename,catalog);
+  try{
+    assert.equal(reopened.bootstrap().noteSections.find(item=>item.id==='section-sql').collapsed,true);
+    const afterDelete=reopened.deleteNoteSection('section-sql');
+    assert.equal(afterDelete.noteSections.some(item=>item.id==='section-sql'),false);
+    assert.equal(afterDelete.notes.some(item=>item.id==='page-window'),false);
+    assert.throws(()=>reopened.deleteNoteSection('section-default'),error=>error.status===400);
+  }finally{reopened.close()}
+});
+
+test('legacy note backups without sections restore pages into the default section',t=>{
+  const {database}=databaseFixture(t);
+  const backup=database.exportBackup();
+  delete backup.noteSections;
+  backup.notes=[{id:'legacy-page',title:'Legacy page',createdAt:'2026-11-18T08:00:00.000Z',updatedAt:'2026-11-18T08:00:00.000Z',blocks:[{id:'legacy-text',type:'text',text:'Keep this.'}]}];
+  const restored=database.importBackup(backup);
+  assert.equal(restored.notes[0].sectionId,'section-default');
+  assert.equal(restored.noteSections[0].title,'My Notes');
+});
+
 test('plan covers all questions once over 30 days with six days per subject and real daily totals', t => {
   const { database } = databaseFixture(t);
   database.updateSettings({ startDate: '2026-11-16', weekdayMinutes: 60, weekendMinutes: 150 });
