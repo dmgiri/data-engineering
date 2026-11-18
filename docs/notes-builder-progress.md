@@ -13,3 +13,6 @@
 - OneNote extension: the responsive notebook tree supports creating, renaming, expanding, collapsing, and deleting sections plus nested page creation.
 - OneNote extension: pages can mix text, safe links, local photos, and editable tables; desktop and 390 px workflows are browser-tested.
 - OneNote extension verified with 36/36 Node tests, a production build, 22/22 Chrome checks, and live migration of existing pages into the default section.
+- Full-window Notes: the portal shell is hidden only for Notes, the three-pane notebook fills the browser window, and Exit notes returns to the dashboard.
+- Code snippets: pages now support validated SQL, PostgreSQL, Python, PySpark, Scala, JSON, Bash, and plain-text code blocks alongside text, URLs, photos, and tables.
+- Full-window verification: 36/36 Node tests, production build, 22/22 Chrome checks, desktop/code/mobile screenshot inspection, and HTTP 200 from the restarted Vite and SQLite services. The live database still contains 875 questions and the existing `Imp Notes` and `Sample` pages.
