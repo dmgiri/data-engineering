@@ -1,5 +1,5 @@
 import {useEffect,useMemo,useState} from 'react';
-import {ArrowDown,ArrowUp,ChevronDown,ChevronLeft,ChevronRight,Code2,FilePlus2,FileText,FolderPlus,Image,Link2,LogOut,MoreHorizontal,NotebookTabs,Palette,PanelLeftClose,PanelLeftOpen,Pencil,Plus,Save,Search,Table2,Trash2,Type} from 'lucide-react';
+import {ArrowDown,ArrowUp,ChevronDown,ChevronLeft,ChevronRight,Code2,FilePlus2,FileText,FolderPlus,Image,Link2,LogOut,Moon,MoreHorizontal,NotebookTabs,Palette,PanelLeftClose,PanelLeftOpen,Pencil,Plus,Save,Search,Sun,Table2,Trash2,Type} from 'lucide-react';
 import {mutate,notify,uid} from './store';
 
 const copy=value=>JSON.parse(JSON.stringify(value));
@@ -11,7 +11,7 @@ const shortDate=value=>new Intl.DateTimeFormat('en-GB',{day:'numeric',month:'sho
 const sectionColors=['#7c4dff','#0a84ff','#ff4d67','#ec00a9','#ff9f0a','#30b0c7','#34c759','#8e8e93'];
 const codeLanguages=['sql','postgresql','python','pyspark','scala','json','bash','text'];
 
-export default function Notes({data,onExit}){
+export default function Notes({data,onExit,onTheme}){
   const sections=data.noteSections||[];
   const notes=data.notes||[];
   const firstSection=notes[0]?.sectionId||sections[0]?.id||null;
@@ -85,7 +85,7 @@ export default function Notes({data,onExit}){
   return <div className="notes-page">
     <div className={`notes-workspace ${sectionsPaneCollapsed?'sections-collapsed':''} ${selectedSection?.collapsed?'pages-collapsed':''}`} style={{'--active-section-color':selectedSection?.color||sectionColors[0]}}>
       <aside className="note-sections-pane" aria-label="Notebook sections">
-        <header className="note-notebook-header"><span><NotebookTabs size={18}/><strong>My notebook</strong></span><div><button type="button" data-action="exit-notes" aria-label="Exit notes" title="Exit notes" onClick={exitNotes}><LogOut size={16}/></button><button type="button" data-action="toggle-sections-pane" aria-label={sectionsPaneCollapsed?'Expand section pane':'Collapse section pane'} aria-expanded={!sectionsPaneCollapsed} onClick={()=>setSectionsPaneCollapsed(value=>!value)}>{sectionsPaneCollapsed?<PanelLeftOpen size={16}/>:<PanelLeftClose size={16}/>}</button></div></header>
+        <header className="note-notebook-header"><span><NotebookTabs size={18}/><strong>My notebook</strong></span><div><button type="button" data-action="notes-theme" aria-label={`Use ${data.settings.theme==='dark'?'light':'dark'} mode`} title={`Use ${data.settings.theme==='dark'?'light':'dark'} mode`} onClick={onTheme}>{data.settings.theme==='dark'?<Sun size={16}/>:<Moon size={16}/>}</button><button type="button" data-action="exit-notes" aria-label="Exit notes" title="Exit notes" onClick={exitNotes}><LogOut size={16}/></button><button type="button" data-action="toggle-sections-pane" aria-label={sectionsPaneCollapsed?'Expand section pane':'Collapse section pane'} aria-expanded={!sectionsPaneCollapsed} onClick={()=>setSectionsPaneCollapsed(value=>!value)}>{sectionsPaneCollapsed?<PanelLeftOpen size={16}/>:<PanelLeftClose size={16}/>}</button></div></header>
         <div className="note-section-list">{sections.map(section=>{
           const selected=section.id===selectedSectionId;
           const pageCount=notes.filter(note=>note.sectionId===section.id).length;

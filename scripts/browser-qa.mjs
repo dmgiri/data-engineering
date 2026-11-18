@@ -113,6 +113,8 @@ try{
  assert.equal(await evaluate('getComputedStyle(document.querySelector(".app-main>.topbar")).display'), 'none','Notes must hide the portal top bar');
  assert.equal(await evaluate('(()=>{const box=document.querySelector(".notes-workspace").getBoundingClientRect();return box.left===0&&box.top===0&&box.width===innerWidth&&box.height>=innerHeight})()'),true,'Notes must fill the browser window');
  assert.equal(await evaluate('Boolean(document.querySelector("[data-action=exit-notes]"))'),true,'Full-window Notes must provide an exit control');
+ assert.equal(await evaluate('Boolean(document.querySelector("[data-action=notes-theme]"))'),true,'Full-window Notes must retain its theme control');
+ await click('[data-action="notes-theme"]');await wait('document.documentElement.dataset.theme==="dark"');await click('[data-action="notes-theme"]');await wait('document.documentElement.dataset.theme==="light"');
  assert.equal(await evaluate('Boolean(document.querySelector(".note-sections-pane")&&document.querySelector(".note-pages-pane")&&document.querySelector(".note-editor-shell"))'),true,'Notes must have separate section, page, and editor panes');
  assert.equal(await evaluate('(()=>{const a=document.querySelector(".note-sections-pane").getBoundingClientRect(),b=document.querySelector(".note-pages-pane").getBoundingClientRect(),c=document.querySelector(".note-editor-shell").getBoundingClientRect();return a.left<b.left&&b.left<c.left})()'),true,'Desktop notes panes must read left to right like OneNote');
  assert.equal(await evaluate('document.querySelectorAll(".note-section-item").length'),1,'A new notebook must start with the default section');
