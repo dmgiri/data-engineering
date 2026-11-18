@@ -44,6 +44,7 @@ export function createStudyServer({ database = createDatabase(resolve(projectDir
           'POST /api/sessions': value => database.saveSession(value),
           'POST /api/attempts': value => database.saveAttempt(value),
           'POST /api/reviews': value => database.saveReview(value),
+          'POST /api/note-sections': value => database.saveNoteSection(value),
           'POST /api/notes': value => database.saveNote(value),
           'PUT /api/material-state': value => database.saveMaterialState(value),
           'POST /api/import': value => database.importBackup(value)
@@ -51,12 +52,13 @@ export function createStudyServer({ database = createDatabase(resolve(projectDir
         const draft = request.method === 'PUT' && path.match(/^\/api\/drafts\/([^/]+)$/);
         const bookmark = request.method === 'POST' && path.match(/^\/api\/bookmarks\/([^/]+)$/);
         const materialProgress=request.method==='PUT'&&path.match(/^\/api\/material-progress\/([^/]+)$/);
+        const deleteNoteSection=request.method==='DELETE'&&path.match(/^\/api\/note-sections\/([^/]+)$/);
         const deleteNote=request.method==='DELETE'&&path.match(/^\/api\/notes\/([^/]+)$/);
         const route = routes[`${request.method} ${path}`];
-        if (!route && !draft && !bookmark&&!materialProgress&&!deleteNote) throw httpError(404, 'API route not found.');
+        if (!route && !draft && !bookmark&&!materialProgress&&!deleteNoteSection&&!deleteNote) throw httpError(404, 'API route not found.');
         const body = await readJson(request);
         if (!body || typeof body !== 'object' || Array.isArray(body)) throw httpError(400, 'JSON body must be an object.');
-        return json(200, route ? route(body) : draft ? database.saveDraft(draft[1], body.text) : bookmark ? database.toggleBookmark(bookmark[1]) : materialProgress ? database.saveMaterialProgress(materialProgress[1],body.completed) : database.deleteNote(deleteNote[1]));
+        return json(200, route ? route(body) : draft ? database.saveDraft(draft[1], body.text) : bookmark ? database.toggleBookmark(bookmark[1]) : materialProgress ? database.saveMaterialProgress(materialProgress[1],body.completed) : deleteNoteSection ? database.deleteNoteSection(deleteNoteSection[1]) : database.deleteNote(deleteNote[1]));
       }
       if (!['GET', 'HEAD'].includes(request.method)) throw httpError(405, 'Method not allowed.');
       let filename = resolve(root, `.${path === '/' ? '/index.html' : path}`);

@@ -328,6 +328,7 @@ test('HTTP enforces local mutation headers, JSON and origin while returning pers
     ['POST', '/api/bookmarks/sql-1', {}],
     ['PUT', '/api/material-progress/guide-day-01-section-01', { completed: true }],
     ['PUT', '/api/material-state', { materialId: 'guide', day: 1, sectionId: 'guide-day-01-section-01' }],
+    ['POST', '/api/note-sections', {id:'http-section',title:'HTTP section',collapsed:false,order:1,createdAt:'2026-11-18T07:00:00.000Z'}],
     ['POST', '/api/notes', {id:'http-note',title:'HTTP note',createdAt:'2026-11-18T08:00:00.000Z',blocks:[{id:'http-block',type:'text',text:'Saved through the local API.'}]}]
   ];
   for (const [method, path, body] of writes) {
@@ -348,7 +349,11 @@ test('HTTP enforces local mutation headers, JSON and origin while returning pers
   assert.deepEqual(backup.progress.bookmarks, ['sql-1']);
   assert.equal(backup.progress.materialSections[0].sectionId,'guide-day-01-section-01');
   assert.equal(backup.progress.materialState.sectionId,'guide-day-01-section-01');
+  assert.equal(backup.noteSections.some(section=>section.id==='http-section'),true);
   assert.equal(backup.notes[0].title,'HTTP note');
+  const deletedSection=await fetch(`${base}/api/note-sections/http-section`,{method:'DELETE',headers,body:'{}'});
+  assert.equal(deletedSection.status,200);
+  assert.equal((await deletedSection.json()).noteSections.some(section=>section.id==='http-section'),false);
   const deletedNote=await fetch(`${base}/api/notes/http-note`,{method:'DELETE',headers,body:'{}'});
   assert.equal(deletedNote.status,200);
   assert.equal((await deletedNote.json()).notes.length,0);
