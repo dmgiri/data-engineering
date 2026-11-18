@@ -124,10 +124,14 @@ try{
  await click('.note-section-item.selected [data-action="section-options"]');
  await click('.note-section-item.selected [data-action="rename-section"]');await wait('document.querySelector(".note-section-item.selected").textContent.includes("SQL interview")');
  await click('.note-section-item.selected [data-action="section-color"]');await click('[data-section-color="#ff4d67"]');await wait('document.querySelector(".note-section-item.selected").style.getPropertyValue("--section-color")==="#ff4d67"');
+ await evaluate('window.__noteExpandedWidths={sections:document.querySelector(".note-sections-pane").getBoundingClientRect().width,pages:document.querySelector(".note-pages-pane").getBoundingClientRect().width}');
  await click('.note-section-item.selected .note-section-toggle');await wait('document.querySelector(".note-section-item.selected .note-section-toggle").getAttribute("aria-expanded")==="false"');
  assert.equal(await evaluate('document.querySelector(".notes-workspace").classList.contains("pages-collapsed")'),true,'Section collapse must hide its page pane');
+ assert.equal(await evaluate('(()=>{const width=document.querySelector(".note-pages-pane").getBoundingClientRect().width;return width<=52&&width<window.__noteExpandedWidths.pages/3})()'),true,'Collapsed page pane must shrink to an icon rail');
  await click('.note-section-item.selected .note-section-toggle');await wait('document.querySelector(".note-section-item.selected .note-section-toggle").getAttribute("aria-expanded")==="true"');
- await click('[data-action="toggle-sections-pane"]');await wait('document.querySelector(".notes-workspace").classList.contains("sections-collapsed")');await click('[data-action="toggle-sections-pane"]');await wait('!document.querySelector(".notes-workspace").classList.contains("sections-collapsed")');
+ await click('[data-action="toggle-sections-pane"]');await wait('document.querySelector(".notes-workspace").classList.contains("sections-collapsed")');
+ assert.equal(await evaluate('(()=>{const width=document.querySelector(".note-sections-pane").getBoundingClientRect().width;return width<=66&&width<window.__noteExpandedWidths.sections/3})()'),true,'Collapsed section pane must shrink to an icon rail');
+ await click('[data-action="toggle-sections-pane"]');await wait('!document.querySelector(".notes-workspace").classList.contains("sections-collapsed")');
  await click('[data-action="new-page"]');await fill('#note-title','Window functions');
  await fill('.note-block[data-block-type="text"] textarea','ROW_NUMBER needs a stable tie breaker.');
  await click('[data-add-block="link"]');await fill('.note-block[data-block-type="link"] input[name="label"]','PostgreSQL docs');await fill('.note-block[data-block-type="link"] input[name="url"]','https://www.postgresql.org/docs/current/tutorial-window.html');
