@@ -248,36 +248,49 @@ export function createDatabase(filename = resolve('.data/study.sqlite'), catalog
     if(!noteSectionColors.includes(color))invalid('Choose a supported note section color.');
     return {id:id(value.id,'note section id'),title,color,collapsed:value.collapsed,order,createdAt:createdAt(value.createdAt),updatedAt:restore?createdAt(value.updatedAt):new Date().toISOString()};
   };
+  const normalizeNoteLayout=(value,index)=>{
+    if(value===undefined)return null;
+    object(value,`Note block ${index+1} layout`);
+    return {
+      x:integer(value.x,'Note block x',0,10000),
+      y:integer(value.y,'Note block y',0,10000),
+      width:integer(value.width,'Note block width',180,2000),
+      height:integer(value.height,'Note block height',80,2000),
+      z:integer(value.z,'Note block z-index',0,10000)
+    };
+  };
   const normalizeNoteBlock=(value,index)=>{
     object(value,`Note block ${index+1}`);
     const blockId=id(value.id,`note block ${index+1} id`);
+    const layout=normalizeNoteLayout(value.layout,index);
+    const finish=block=>layout?{...block,layout}:block;
     if(!['text','link','image','table','code'].includes(value.type))invalid(`Note block ${index+1} has an unsupported type.`);
-    if(value.type==='text')return {id:blockId,type:'text',text:text(value.text,'Note text',100000)};
+    if(value.type==='text')return finish({id:blockId,type:'text',text:text(value.text,'Note text',100000)});
     if(value.type==='code'){
       if(!noteCodeLanguages.includes(value.language))invalid('Choose a supported code language.');
-      return {id:blockId,type:'code',language:value.language,code:text(value.code,'Note code',100000)};
+      return finish({id:blockId,type:'code',language:value.language,code:text(value.code,'Note code',100000)});
     }
     if(value.type==='table'){
       if(!Array.isArray(value.rows)||value.rows.length<1||value.rows.length>20)invalid('A note table must contain 1 to 20 rows.');
       const width=Array.isArray(value.rows[0])?value.rows[0].length:0;
       if(width<1||width>10||value.rows.some(row=>!Array.isArray(row)||row.length!==width))invalid('A note table must contain 1 to 10 columns with equal row lengths.');
-      return {id:blockId,type:'table',rows:value.rows.map((row,rowIndex)=>row.map((cell,columnIndex)=>text(cell,`Table cell ${rowIndex+1}:${columnIndex+1}`,2000)))};
+      return finish({id:blockId,type:'table',rows:value.rows.map((row,rowIndex)=>row.map((cell,columnIndex)=>text(cell,`Table cell ${rowIndex+1}:${columnIndex+1}`,2000)))});
     }
     if(value.type==='link'){
       const label=text(value.label,'Link label',300),urlValue=text(value.url,'Link URL',2000);
       let parsed;try{parsed=new URL(urlValue)}catch{invalid('Link URL must be valid.')}
       if(!['http:','https:'].includes(parsed.protocol))invalid('Links must use http or https.');
-      return {id:blockId,type:'link',label,url:urlValue};
+      return finish({id:blockId,type:'link',label,url:urlValue});
     }
     const name=text(value.name,'Image name',200),alt=text(value.alt,'Image description',500,true),dataUrl=text(value.dataUrl,'Image data',2800000);
     if(!/^data:image\/(?:png|jpeg|webp|gif);base64,[a-zA-Z0-9+/]+={0,2}$/.test(dataUrl))invalid('Use a PNG, JPEG, WebP, or GIF image.');
-    return {id:blockId,type:'image',name,alt,dataUrl};
+    return finish({id:blockId,type:'image',name,alt,dataUrl});
   };
   const normalizeNote=(value,restore=false,allowedSections=null)=>{
     object(value,'Note');
     const title=text(value.title,'Note title',200).trim();
     if(!title)invalid('Note title is required.');
-    if(!Array.isArray(value.blocks)||value.blocks.length<1||value.blocks.length>100)invalid('A note must contain 1 to 100 blocks.');
+    if(!Array.isArray(value.blocks)||value.blocks.length>100)invalid('A note must contain 0 to 100 blocks.');
     const blocks=value.blocks.map(normalizeNoteBlock);
     if(new Set(blocks.map(block=>block.id)).size!==blocks.length)invalid('Note blocks must have unique ids.');
     const sectionId=value.sectionId===undefined?'section-default':id(value.sectionId,'note section id');

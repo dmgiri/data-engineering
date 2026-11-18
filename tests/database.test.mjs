@@ -134,6 +134,35 @@ test('notes persist text, safe links, local images and code while legacy backups
   }finally{reopened.close()}
 });
 
+test('freeform note layouts and empty pages persist while invalid geometry is atomic',t=>{
+  const {database,filename}=databaseFixture(t);
+  const positioned={
+    id:'canvas-note',title:'Canvas note',createdAt:'2026-11-18T08:00:00.000Z',
+    blocks:[{id:'canvas-text',type:'text',text:'Placed anywhere.',layout:{x:240,y:360,width:420,height:180,z:3}}]
+  };
+  const saved=database.saveNote(positioned);
+  assert.deepEqual(saved.notes.find(note=>note.id==='canvas-note').blocks[0].layout,positioned.blocks[0].layout);
+  database.saveNote({id:'empty-canvas',title:'Empty canvas',createdAt:'2026-11-18T08:10:00.000Z',blocks:[]});
+  assert.deepEqual(database.bootstrap().notes.find(note=>note.id==='empty-canvas').blocks,[]);
+  const before=structuredClone(database.bootstrap().notes);
+  for(const [idSuffix,layout] of [
+    ['negative',{x:-1,y:0,width:420,height:180,z:0}],
+    ['narrow',{x:0,y:0,width:179,height:180,z:0}],
+    ['huge',{x:0,y:0,width:420,height:2001,z:0}],
+    ['fraction',{x:1.5,y:0,width:420,height:180,z:0}],
+    ['nan',{x:Number.NaN,y:0,width:420,height:180,z:0}]
+  ])assert.throws(()=>database.saveNote({...positioned,id:`bad-${idSuffix}`,blocks:[{...positioned.blocks[0],layout}]}),error=>error.status===400);
+  assert.deepEqual(database.bootstrap().notes,before,'invalid layout must not alter saved notes');
+  const backup=database.exportBackup();
+  database.close();
+  const reopened=createDatabase(filename,catalog);
+  try{
+    assert.deepEqual(reopened.bootstrap().notes.find(note=>note.id==='canvas-note').blocks[0].layout,positioned.blocks[0].layout);
+    reopened.saveNote({id:'temporary',title:'Temporary',createdAt:'2026-11-18T09:00:00.000Z',blocks:[]});
+    assert.deepEqual(reopened.importBackup(backup).notes.find(note=>note.id==='canvas-note').blocks[0].layout,positioned.blocks[0].layout);
+  }finally{reopened.close()}
+});
+
 test('note sections organize pages, persist collapse state, validate tables and delete atomically',t=>{
   const {database,filename}=databaseFixture(t);
   const initial=database.bootstrap();
