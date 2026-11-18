@@ -6,6 +6,7 @@ import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
 const reviewDays = { again: 1, developing: 3, confident: 7 };
 const noteSectionColors=['#7c4dff','#0a84ff','#ff4d67','#ec00a9','#ff9f0a','#30b0c7','#34c759','#8e8e93'];
+const noteCodeLanguages=['sql','postgresql','python','pyspark','scala','json','bash','text'];
 const invalid = message => { const error = new Error(message); error.status = 400; throw error; };
 const object = (value, label) => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) invalid(`${label} must be an object.`);
@@ -250,8 +251,12 @@ export function createDatabase(filename = resolve('.data/study.sqlite'), catalog
   const normalizeNoteBlock=(value,index)=>{
     object(value,`Note block ${index+1}`);
     const blockId=id(value.id,`note block ${index+1} id`);
-    if(!['text','link','image','table'].includes(value.type))invalid(`Note block ${index+1} has an unsupported type.`);
+    if(!['text','link','image','table','code'].includes(value.type))invalid(`Note block ${index+1} has an unsupported type.`);
     if(value.type==='text')return {id:blockId,type:'text',text:text(value.text,'Note text',100000)};
+    if(value.type==='code'){
+      if(!noteCodeLanguages.includes(value.language))invalid('Choose a supported code language.');
+      return {id:blockId,type:'code',language:value.language,code:text(value.code,'Note code',100000)};
+    }
     if(value.type==='table'){
       if(!Array.isArray(value.rows)||value.rows.length<1||value.rows.length>20)invalid('A note table must contain 1 to 20 rows.');
       const width=Array.isArray(value.rows[0])?value.rows[0].length:0;

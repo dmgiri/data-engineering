@@ -96,14 +96,15 @@ test('material progress participates in new backups while legacy backups preserv
   assert.equal(database.bootstrap().progress.materialSections.length,2);
 });
 
-test('notes persist text, safe links and local images while legacy backups preserve current notes',t=>{
+test('notes persist text, safe links, local images and code while legacy backups preserve current notes',t=>{
   const {database,filename}=databaseFixture(t);
   const note={
     id:'note-one',title:'Window function notes',createdAt:'2026-11-18T08:00:00.000Z',
     blocks:[
       {id:'block-text',type:'text',text:'ROW_NUMBER needs a deterministic tie breaker.'},
       {id:'block-link',type:'link',label:'PostgreSQL window docs',url:'https://www.postgresql.org/docs/current/tutorial-window.html'},
-      {id:'block-image',type:'image',name:'plan.png',alt:'Window execution sketch',dataUrl:'data:image/png;base64,iVBORw0KGgo='}
+      {id:'block-image',type:'image',name:'plan.png',alt:'Window execution sketch',dataUrl:'data:image/png;base64,iVBORw0KGgo='},
+      {id:'block-code',type:'code',language:'python',code:'rows = sorted(rows, key=lambda row: row["event_time"])'}
     ]
   };
   const saved=database.saveNote(note);
@@ -113,6 +114,8 @@ test('notes persist text, safe links and local images while legacy backups prese
   assert.ok(Date.parse(saved.notes[0].updatedAt));
   assert.throws(()=>database.saveNote({...note,id:'bad-link',blocks:[{id:'bad',type:'link',label:'Unsafe',url:'javascript:alert(1)'}]}),error=>error.status===400);
   assert.throws(()=>database.saveNote({...note,id:'bad-image',blocks:[{id:'bad',type:'image',name:'vector.svg',alt:'Unsafe',dataUrl:'data:image/svg+xml;base64,PHN2Zz4='}]}),error=>error.status===400);
+  assert.throws(()=>database.saveNote({...note,id:'bad-code-language',blocks:[{id:'bad',type:'code',language:'javascript',code:'alert(1)'}]}),error=>error.status===400);
+  assert.throws(()=>database.saveNote({...note,id:'bad-code-length',blocks:[{id:'bad',type:'code',language:'sql',code:'x'.repeat(100001)}]}),error=>error.status===400);
   assert.equal(database.bootstrap().notes.length,1,'invalid notes must not alter saved notes');
   const backup=database.exportBackup();
   assert.equal(backup.notes.length,1);
@@ -125,6 +128,7 @@ test('notes persist text, safe links and local images while legacy backups prese
   const reopened=createDatabase(filename,catalog);
   try{
     assert.equal(reopened.bootstrap().notes.length,2);
+    assert.deepEqual(reopened.bootstrap().notes.find(item=>item.id==='note-one').blocks.at(-1),note.blocks.at(-1));
     assert.equal(reopened.deleteNote('note-one').notes.length,1);
     assert.throws(()=>reopened.deleteNote('missing-note'),error=>error.status===400);
   }finally{reopened.close()}
