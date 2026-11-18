@@ -14,9 +14,11 @@
 | Collapse navigation | Collapse button | Sidebar becomes a 74 px icon rail; control icon, accessible label, and expanded state change | Implemented |
 | Expand navigation | Expand button | Full labels and study-plan card return | Implemented |
 | Mobile navigation | Menu button | Existing full drawer remains unchanged; desktop collapse control is hidden | Preserved |
+| Notebook section expand | Section chevron | Nested pages fade and move 4 px into place; chevron and `aria-expanded` also change | Implemented |
 
 ## Deliberately not animated
 
 - Grid-column width is not animated because layout-property animation can stutter and adds no useful study feedback.
 - Navigation labels rely on the structural state, changed icon, and accessible label rather than motion alone.
 - The project-wide reduced-motion rule continues to remove nonessential transitions.
+- Notebook page groups do not animate when reduced motion is requested.

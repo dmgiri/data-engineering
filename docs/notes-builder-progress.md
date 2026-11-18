@@ -9,3 +9,6 @@
 - Final review: self-review because multi-agent dispatch was not authorized. No Critical or Important findings after checking schema migration, atomic validation, unsafe links/data URLs, legacy backup behavior, note selection/save/delete state, responsive containment, and documentation.
 - Task 3: complete — fresh verification passed 34/34 Node tests, the Vite production build, and 21/21 Chrome checks. Desktop and 390 px screenshots were inspected in `artifacts/notes-desktop.png` and `artifacts/notes-mobile.png`.
 - Local handoff: the verified Vite and API processes were restarted; `http://127.0.0.1:5173/` and `/api/bootstrap` return 200, bootstrap exposes `notes`, retains all 875 questions, and the real notebook currently contains zero notes.
+- OneNote extension: SQLite now stores sections, page membership, order, and independent collapse state; existing notes migrate into `My Notes`.
+- OneNote extension: the responsive notebook tree supports creating, renaming, expanding, collapsing, and deleting sections plus nested page creation.
+- OneNote extension: pages can mix text, safe links, local photos, and editable tables; desktop and 390 px workflows are browser-tested.
