@@ -1,11 +1,14 @@
-import {useEffect,useMemo,useState} from 'react';
+import {useEffect,useMemo,useRef,useState} from 'react';
 import {ArrowDown,ArrowUp,ChevronDown,ChevronLeft,ChevronRight,Code2,FilePlus2,FileText,FolderPlus,Image,Link2,LogOut,Moon,MoreHorizontal,NotebookTabs,Palette,PanelLeftClose,PanelLeftOpen,Pencil,Plus,Save,Search,Sun,Table2,Trash2,Type} from 'lucide-react';
 import {mutate,notify,uid} from './store';
 
 const copy=value=>JSON.parse(JSON.stringify(value));
-const newTextBlock=()=>({id:uid(),type:'text',text:''});
-const newPage=(sectionId,order)=>({id:uid(),sectionId,order,title:'',createdAt:new Date().toISOString(),blocks:[newTextBlock()]});
-const blockFor=type=>type==='link'?{id:uid(),type,label:'',url:''}:type==='image'?{id:uid(),type,name:'',alt:'',dataUrl:''}:type==='table'?{id:uid(),type,rows:[['',''],['','']]}:type==='code'?{id:uid(),type,language:'sql',code:''}:newTextBlock();
+const blockSize={text:[600,150],link:[600,180],image:[600,320],table:[620,250],code:[680,340]};
+const layoutFor=(type,x=28,y=24,z=0)=>{const [width,height]=blockSize[type]||blockSize.text;return {x:Math.max(0,Math.round(x)),y:Math.max(0,Math.round(y)),width,height,z}};
+const newTextBlock=layout=>({id:uid(),type:'text',text:'',...(layout&&{layout})});
+const blockFor=(type,layout)=>({...((type==='link'?{id:uid(),type,label:'',url:''}:type==='image'?{id:uid(),type,name:'',alt:'',dataUrl:''}:type==='table'?{id:uid(),type,rows:[['',''],['','']]}:type==='code'?{id:uid(),type,language:'sql',code:''}:newTextBlock())),...(layout&&{layout})});
+const hydrateNote=note=>{let nextY=24;return {...copy(note),blocks:note.blocks.map((block,index)=>{const layout=block.layout||layoutFor(block.type,28,nextY,index);nextY=Math.max(nextY,layout.y+layout.height+24);return {...block,layout}})}};
+const newPage=(sectionId,order)=>({id:uid(),sectionId,order,title:'',createdAt:new Date().toISOString(),blocks:[newTextBlock(layoutFor('text'))]});
 const safeLink=value=>{try{const parsed=new URL(value);return ['http:','https:'].includes(parsed.protocol)?value:null}catch{return null}};
 const shortDate=value=>new Intl.DateTimeFormat('en-GB',{day:'numeric',month:'short',year:'numeric'}).format(new Date(value));
 const shortTime=value=>new Intl.DateTimeFormat('en-US',{hour:'numeric',minute:'2-digit'}).format(new Date(value));
@@ -19,11 +22,13 @@ export default function Notes({data,onExit,onTheme}){
   const [query,setQuery]=useState('');
   const [selectedSectionId,setSelectedSectionId]=useState(firstSection);
   const [selectedId,setSelectedId]=useState(notes.find(note=>note.sectionId===firstSection)?.id||null);
-  const [draft,setDraft]=useState(()=>selectedId?copy(notes.find(note=>note.id===selectedId)):null);
+  const [draft,setDraft]=useState(()=>selectedId?hydrateNote(notes.find(note=>note.id===selectedId)):null);
   const [dirty,setDirty]=useState(false);
+  const [selectedBlockId,setSelectedBlockId]=useState(null);
   const [sectionsPaneCollapsed,setSectionsPaneCollapsed]=useState(false);
   const [sectionMenu,setSectionMenu]=useState(null);
   const [colorMenu,setColorMenu]=useState(null);
+  const blockRefs=useRef(new Map());
   const filtered=useMemo(()=>{
     const value=query.trim().toLowerCase();
     if(!value)return notes;
@@ -32,22 +37,27 @@ export default function Notes({data,onExit,onTheme}){
   const selectedSection=sections.find(section=>section.id===selectedSectionId)||sections[0]||null;
   const selectedPages=filtered.filter(note=>note.sectionId===selectedSection?.id);
   const saved=notes.some(note=>note.id===selectedId);
+  const canvasSize=useMemo(()=>({
+    width:Math.max(1100,...(draft?.blocks||[]).map(block=>block.layout.x+block.layout.width+120)),
+    height:Math.max(900,...(draft?.blocks||[]).map(block=>block.layout.y+block.layout.height+160))
+  }),[draft?.blocks]);
   useEffect(()=>{
     if(selectedSectionId&&!sections.some(section=>section.id===selectedSectionId))setSelectedSectionId(sections[0]?.id||null);
   },[sections,selectedSectionId]);
   useEffect(()=>{
     if(dirty)return;
     const note=notes.find(item=>item.id===selectedId);
-    if(note){setDraft(copy(note));setSelectedSectionId(note.sectionId)}
-    else if(selectedId){const fallback=notes.find(item=>item.sectionId===selectedSectionId)||notes[0]||null;setSelectedId(fallback?.id||null);setDraft(fallback?copy(fallback):null);if(fallback)setSelectedSectionId(fallback.sectionId)}
+    if(note){setDraft(hydrateNote(note));setSelectedSectionId(note.sectionId)}
+    else if(selectedId){const fallback=notes.find(item=>item.sectionId===selectedSectionId)||notes[0]||null;setSelectedId(fallback?.id||null);setDraft(fallback?hydrateNote(fallback):null);if(fallback)setSelectedSectionId(fallback.sectionId)}
   },[notes,selectedId,selectedSectionId,dirty]);
+  useEffect(()=>{if(!selectedBlockId)return;const frame=requestAnimationFrame(()=>blockRefs.current.get(selectedBlockId)?.querySelector('textarea,input,select')?.focus());return()=>cancelAnimationFrame(frame)},[selectedBlockId,draft?.blocks.length]);
   const confirmDiscard=()=>!dirty||window.confirm('Discard unsaved page changes?');
-  const selectSection=section=>{if(!confirmDiscard())return;setSectionMenu(null);setColorMenu(null);setSelectedSectionId(section.id);const page=notes.find(note=>note.sectionId===section.id);setSelectedId(page?.id||null);setDraft(page?copy(page):null);setDirty(false)};
-  const selectPage=note=>{if(!confirmDiscard())return;setSelectedSectionId(note.sectionId);setSelectedId(note.id);setDraft(copy(note));setDirty(false)};
+  const selectSection=section=>{if(!confirmDiscard())return;setSectionMenu(null);setColorMenu(null);setSelectedBlockId(null);setSelectedSectionId(section.id);const page=notes.find(note=>note.sectionId===section.id);setSelectedId(page?.id||null);setDraft(page?hydrateNote(page):null);setDirty(false)};
+  const selectPage=note=>{if(!confirmDiscard())return;setSelectedBlockId(null);setSelectedSectionId(note.sectionId);setSelectedId(note.id);setDraft(hydrateNote(note));setDirty(false)};
   const createSection=async()=>{
     const title=window.prompt('Section name');if(!title?.trim())return;
     const section={id:uid(),title:title.trim(),color:sectionColors[sections.length%sectionColors.length],collapsed:false,order:sections.length,createdAt:new Date().toISOString()};
-    if(await mutate('/api/note-sections','POST',section)){setSelectedSectionId(section.id);setSelectedId(null);setDraft(null);setDirty(false)}
+    if(await mutate('/api/note-sections','POST',section)){setSelectedBlockId(null);setSelectedSectionId(section.id);setSelectedId(null);setDraft(null);setDirty(false)}
   };
   const renameSection=async section=>{const title=window.prompt('Rename section',section.title);if(!title?.trim()||title.trim()===section.title)return;await mutate('/api/note-sections','POST',{...section,title:title.trim()})};
   const toggleSection=async section=>{setSelectedSectionId(section.id);await mutate('/api/note-sections','POST',{...section,collapsed:!section.collapsed})};
@@ -55,19 +65,20 @@ export default function Notes({data,onExit,onTheme}){
   const deleteSection=async section=>{
     const count=notes.filter(note=>note.sectionId===section.id).length;
     if(section.id==='section-default'||!window.confirm(`Delete “${section.title}”${count?` and its ${count} page${count===1?'':'s'}`:''}?`))return;
-    if(await mutate('/api/note-sections/'+section.id,'DELETE',{})){setSelectedSectionId('section-default');setSelectedId(null);setDraft(null);setDirty(false);notify('Section deleted.')}
+    if(await mutate('/api/note-sections/'+section.id,'DELETE',{})){setSelectedBlockId(null);setSelectedSectionId('section-default');setSelectedId(null);setDraft(null);setDirty(false);notify('Section deleted.')}
   };
   const createPage=async(sectionId=selectedSectionId||sections[0]?.id)=>{
     if(!sectionId||!confirmDiscard())return;
     const section=sections.find(item=>item.id===sectionId);
     if(section?.collapsed)await mutate('/api/note-sections','POST',{...section,collapsed:false});
     const page=newPage(sectionId,notes.filter(note=>note.sectionId===sectionId).length);
-    setSelectedSectionId(sectionId);setSelectedId(page.id);setDraft(page);setDirty(true);
+    setSelectedBlockId(page.blocks[0].id);setSelectedSectionId(sectionId);setSelectedId(page.id);setDraft(page);setDirty(true);
   };
   const changePage=changes=>{setDraft(current=>({...current,...changes}));setDirty(true)};
   const changeBlock=(blockId,changes)=>{setDraft(current=>({...current,blocks:current.blocks.map(block=>block.id===blockId?{...block,...changes}:block)}));setDirty(true)};
-  const addBlock=type=>{setDraft(current=>({...current,blocks:[...current.blocks,blockFor(type)]}));setDirty(true)};
-  const removeBlock=blockId=>{setDraft(current=>({...current,blocks:current.blocks.length===1?[newTextBlock()]:current.blocks.filter(block=>block.id!==blockId)}));setDirty(true)};
+  const addBlock=(type,point)=>{const insertion=point||{x:36,y:Math.max(36,...draft.blocks.map(block=>block.layout.y+block.layout.height+24))},id=uid(),z=Math.max(0,...draft.blocks.map(block=>block.layout.z))+1,block={...blockFor(type,layoutFor(type,insertion.x,insertion.y,z)),id};setDraft(current=>({...current,blocks:[...current.blocks,block]}));setSelectedBlockId(id);setDirty(true)};
+  const addTextAt=event=>{if(event.button!==0||event.target!==event.currentTarget)return;const bounds=event.currentTarget.getBoundingClientRect();addBlock('text',{x:event.clientX-bounds.left,y:event.clientY-bounds.top})};
+  const removeBlock=blockId=>{setDraft(current=>({...current,blocks:current.blocks.filter(block=>block.id!==blockId)}));setSelectedBlockId(current=>current===blockId?null:current);setDirty(true)};
   const moveBlock=(index,direction)=>{setDraft(current=>{const blocks=[...current.blocks],target=index+direction;if(target<0||target>=blocks.length)return current;[blocks[index],blocks[target]]=[blocks[target],blocks[index]];return {...current,blocks}});setDirty(true)};
   const changeCell=(block,row,column,value)=>changeBlock(block.id,{rows:block.rows.map((cells,rowIndex)=>rowIndex===row?cells.map((cell,columnIndex)=>columnIndex===column?value:cell):cells)});
   const addRow=block=>changeBlock(block.id,{rows:[...block.rows,Array(block.rows[0].length).fill('')]});
@@ -119,7 +130,7 @@ export default function Notes({data,onExit,onTheme}){
         <form id="note-page-form" className="note-editor" onSubmit={save}>
           <div className="note-editor-section"><i/><span>{selectedSection?.title}</span></div>
           <div className="note-editor-top"><div><input id="note-title" value={draft.title} onChange={event=>changePage({title:event.target.value})} placeholder="Untitled page" maxLength={200} aria-label="Page title"/><small><span>{shortDate(draft.updatedAt||draft.createdAt)}</span><span>{shortTime(draft.updatedAt||draft.createdAt)}</span></small></div></div>
-          <div className="note-blocks">{draft.blocks.map((block,index)=><article className="note-block" data-block-type={block.type} key={block.id}>
+          <div className="note-blocks note-spatial-layer" style={{width:canvasSize.width,height:canvasSize.height}} onPointerDown={addTextAt}>{draft.blocks.map((block,index)=><article className={`note-block note-canvas-item ${selectedBlockId===block.id?'is-selected':''}`} data-block-id={block.id} data-block-type={block.type} key={block.id} ref={node=>{if(node)blockRefs.current.set(block.id,node);else blockRefs.current.delete(block.id)}} style={{left:block.layout.x,top:block.layout.y,width:block.layout.width,height:block.layout.height,zIndex:block.layout.z}} onPointerDown={event=>{event.stopPropagation();setSelectedBlockId(block.id)}}>
             <header><span>{block.type==='text'?<Type size={14}/>:block.type==='link'?<Link2 size={14}/>:block.type==='image'?<Image size={14}/>:block.type==='code'?<Code2 size={14}/>:<Table2 size={14}/>} {block.type}</span><div><button type="button" aria-label="Move block up" disabled={index===0} onClick={()=>moveBlock(index,-1)}><ArrowUp size={14}/></button><button type="button" aria-label="Move block down" disabled={index===draft.blocks.length-1} onClick={()=>moveBlock(index,1)}><ArrowDown size={14}/></button><button type="button" aria-label="Remove block" onClick={()=>removeBlock(block.id)}><Trash2 size={14}/></button></div></header>
             {block.type==='text'&&<textarea value={block.text} onChange={event=>changeBlock(block.id,{text:event.target.value})} placeholder="Write your notes…" rows={4} maxLength={100000}/>}
             {block.type==='link'&&<div className="note-link-fields"><label>Link label<input name="label" value={block.label} onChange={event=>changeBlock(block.id,{label:event.target.value})} placeholder="PostgreSQL documentation" maxLength={300}/></label><label>URL<input name="url" type="url" value={block.url} onChange={event=>changeBlock(block.id,{url:event.target.value})} placeholder="https://…" maxLength={2000}/></label>{safeLink(block.url)&&<a className="note-preview-link" href={block.url} target="_blank" rel="noreferrer"><Link2 size={14}/>{block.label||block.url}</a>}</div>}
