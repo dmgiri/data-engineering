@@ -1,5 +1,5 @@
 import {useEffect,useMemo,useRef,useState} from 'react';
-import {ArrowDown,ArrowUp,ChevronDown,ChevronLeft,ChevronRight,Code2,FilePlus2,FileText,FolderPlus,Image,Link2,LogOut,Moon,MoreHorizontal,NotebookTabs,Palette,PanelLeftClose,PanelLeftOpen,Pencil,Plus,Save,Search,Sun,Table2,Trash2,Type} from 'lucide-react';
+import {ChevronDown,ChevronLeft,ChevronRight,Code2,FilePlus2,FileText,FolderPlus,Image,Link2,LogOut,Maximize2,Moon,MoreHorizontal,Move,NotebookTabs,Palette,PanelLeftClose,PanelLeftOpen,Pencil,Plus,Save,Search,Sun,Table2,Trash2,Type} from 'lucide-react';
 import {mutate,notify,uid} from './store';
 
 const copy=value=>JSON.parse(JSON.stringify(value));
@@ -29,6 +29,8 @@ export default function Notes({data,onExit,onTheme}){
   const [sectionMenu,setSectionMenu]=useState(null);
   const [colorMenu,setColorMenu]=useState(null);
   const blockRefs=useRef(new Map());
+  const focusBlockId=useRef(null);
+  const interactionCleanup=useRef(()=>{});
   const filtered=useMemo(()=>{
     const value=query.trim().toLowerCase();
     if(!value)return notes;
@@ -50,7 +52,8 @@ export default function Notes({data,onExit,onTheme}){
     if(note){setDraft(hydrateNote(note));setSelectedSectionId(note.sectionId)}
     else if(selectedId){const fallback=notes.find(item=>item.sectionId===selectedSectionId)||notes[0]||null;setSelectedId(fallback?.id||null);setDraft(fallback?hydrateNote(fallback):null);if(fallback)setSelectedSectionId(fallback.sectionId)}
   },[notes,selectedId,selectedSectionId,dirty]);
-  useEffect(()=>{if(!selectedBlockId)return;const frame=requestAnimationFrame(()=>blockRefs.current.get(selectedBlockId)?.querySelector('textarea,input,select')?.focus());return()=>cancelAnimationFrame(frame)},[selectedBlockId,draft?.blocks.length]);
+  useEffect(()=>{if(!selectedBlockId||focusBlockId.current!==selectedBlockId)return;const frame=requestAnimationFrame(()=>{blockRefs.current.get(selectedBlockId)?.querySelector('textarea,input,select')?.focus();focusBlockId.current=null});return()=>cancelAnimationFrame(frame)},[selectedBlockId,draft?.blocks.length]);
+  useEffect(()=>()=>interactionCleanup.current(),[]);
   const confirmDiscard=()=>!dirty||window.confirm('Discard unsaved page changes?');
   const selectSection=section=>{if(!confirmDiscard())return;setSectionMenu(null);setColorMenu(null);setSelectedBlockId(null);setSelectedSectionId(section.id);const page=notes.find(note=>note.sectionId===section.id);setSelectedId(page?.id||null);setDraft(page?hydrateNote(page):null);setDirty(false)};
   const selectPage=note=>{if(!confirmDiscard())return;setSelectedBlockId(null);setSelectedSectionId(note.sectionId);setSelectedId(note.id);setDraft(hydrateNote(note));setDirty(false)};
@@ -72,14 +75,46 @@ export default function Notes({data,onExit,onTheme}){
     const section=sections.find(item=>item.id===sectionId);
     if(section?.collapsed)await mutate('/api/note-sections','POST',{...section,collapsed:false});
     const page=newPage(sectionId,notes.filter(note=>note.sectionId===sectionId).length);
-    setSelectedBlockId(page.blocks[0].id);setSelectedSectionId(sectionId);setSelectedId(page.id);setDraft(page);setDirty(true);
+    focusBlockId.current=page.blocks[0].id;setSelectedBlockId(page.blocks[0].id);setSelectedSectionId(sectionId);setSelectedId(page.id);setDraft(page);setDirty(true);
   };
   const changePage=changes=>{setDraft(current=>({...current,...changes}));setDirty(true)};
   const changeBlock=(blockId,changes)=>{setDraft(current=>({...current,blocks:current.blocks.map(block=>block.id===blockId?{...block,...changes}:block)}));setDirty(true)};
-  const addBlock=(type,point)=>{const insertion=point||{x:36,y:Math.max(36,...draft.blocks.map(block=>block.layout.y+block.layout.height+24))},id=uid(),z=Math.max(0,...draft.blocks.map(block=>block.layout.z))+1,block={...blockFor(type,layoutFor(type,insertion.x,insertion.y,z)),id};setDraft(current=>({...current,blocks:[...current.blocks,block]}));setSelectedBlockId(id);setDirty(true)};
+  const addBlock=(type,point)=>{
+    const insertion=point||{x:36,y:Math.max(36,...draft.blocks.map(block=>block.layout.y+block.layout.height+24))},id=uid();focusBlockId.current=id;
+    setDraft(current=>{const top=Math.max(0,...current.blocks.map(block=>block.layout.z)),blocks=top>=10000?[...current.blocks].sort((a,b)=>a.layout.z-b.layout.z).map((block,index)=>({...block,layout:{...block.layout,z:index}})):current.blocks,z=top>=10000?blocks.length:top+1,block={...blockFor(type,layoutFor(type,insertion.x,insertion.y,z)),id};return {...current,blocks:[...blocks,block]}});
+    setSelectedBlockId(id);setDirty(true);
+  };
   const addTextAt=event=>{if(event.button!==0||event.target!==event.currentTarget)return;const bounds=event.currentTarget.getBoundingClientRect();addBlock('text',{x:event.clientX-bounds.left,y:event.clientY-bounds.top})};
   const removeBlock=blockId=>{setDraft(current=>({...current,blocks:current.blocks.filter(block=>block.id!==blockId)}));setSelectedBlockId(current=>current===blockId?null:current);setDirty(true)};
-  const moveBlock=(index,direction)=>{setDraft(current=>{const blocks=[...current.blocks],target=index+direction;if(target<0||target>=blocks.length)return current;[blocks[index],blocks[target]]=[blocks[target],blocks[index]];return {...current,blocks}});setDirty(true)};
+  const selectBlock=blockId=>{
+    setSelectedBlockId(blockId);
+    const target=draft.blocks.find(block=>block.id===blockId),top=Math.max(0,...draft.blocks.map(block=>block.layout.z));
+    if(target&&target.layout.z<top){setDraft(current=>{
+      if(top<10000)return {...current,blocks:current.blocks.map(block=>block.id===blockId?{...block,layout:{...block.layout,z:top+1}}:block)};
+      const order=new Map([...current.blocks].filter(block=>block.id!==blockId).sort((a,b)=>a.layout.z-b.layout.z).map((block,index)=>[block.id,index]));
+      return {...current,blocks:current.blocks.map(block=>({...block,layout:{...block.layout,z:block.id===blockId?current.blocks.length-1:order.get(block.id)}}))};
+    });setDirty(true)}
+  };
+  const startInteraction=(event,block,mode)=>{
+    if(event.button!==0)return;
+    event.preventDefault();event.stopPropagation();interactionCleanup.current();selectBlock(block.id);
+    const start={clientX:event.clientX,clientY:event.clientY,layout:{...block.layout}};
+    const move=pointer=>{
+      if(pointer.pointerId!==event.pointerId)return;
+      const dx=Math.round(pointer.clientX-start.clientX),dy=Math.round(pointer.clientY-start.clientY);
+      setDraft(current=>({...current,blocks:current.blocks.map(item=>{
+        if(item.id!==block.id)return item;
+        const layout=mode==='drag'
+          ?{...item.layout,x:Math.min(10000,Math.max(0,start.layout.x+dx)),y:Math.min(10000,Math.max(0,start.layout.y+dy))}
+          :{...item.layout,width:Math.min(2000,Math.max(180,start.layout.width+dx)),height:Math.min(2000,Math.max(80,start.layout.height+dy))};
+        return {...item,layout};
+      })}));
+      setDirty(true);
+    };
+    const finish=pointer=>{if(pointer.pointerId!==event.pointerId)return;interactionCleanup.current()};
+    interactionCleanup.current=()=>{window.removeEventListener('pointermove',move);window.removeEventListener('pointerup',finish);window.removeEventListener('pointercancel',finish);interactionCleanup.current=()=>{}};
+    window.addEventListener('pointermove',move);window.addEventListener('pointerup',finish);window.addEventListener('pointercancel',finish);
+  };
   const changeCell=(block,row,column,value)=>changeBlock(block.id,{rows:block.rows.map((cells,rowIndex)=>rowIndex===row?cells.map((cell,columnIndex)=>columnIndex===column?value:cell):cells)});
   const addRow=block=>changeBlock(block.id,{rows:[...block.rows,Array(block.rows[0].length).fill('')]});
   const addColumn=block=>changeBlock(block.id,{rows:block.rows.map(row=>[...row,''])});
@@ -130,13 +165,14 @@ export default function Notes({data,onExit,onTheme}){
         <form id="note-page-form" className="note-editor" onSubmit={save}>
           <div className="note-editor-section"><i/><span>{selectedSection?.title}</span></div>
           <div className="note-editor-top"><div><input id="note-title" value={draft.title} onChange={event=>changePage({title:event.target.value})} placeholder="Untitled page" maxLength={200} aria-label="Page title"/><small><span>{shortDate(draft.updatedAt||draft.createdAt)}</span><span>{shortTime(draft.updatedAt||draft.createdAt)}</span></small></div></div>
-          <div className="note-blocks note-spatial-layer" style={{width:canvasSize.width,height:canvasSize.height}} onPointerDown={addTextAt}>{draft.blocks.map((block,index)=><article className={`note-block note-canvas-item ${selectedBlockId===block.id?'is-selected':''}`} data-block-id={block.id} data-block-type={block.type} key={block.id} ref={node=>{if(node)blockRefs.current.set(block.id,node);else blockRefs.current.delete(block.id)}} style={{left:block.layout.x,top:block.layout.y,width:block.layout.width,height:block.layout.height,zIndex:block.layout.z}} onPointerDown={event=>{event.stopPropagation();setSelectedBlockId(block.id)}}>
-            <header><span>{block.type==='text'?<Type size={14}/>:block.type==='link'?<Link2 size={14}/>:block.type==='image'?<Image size={14}/>:block.type==='code'?<Code2 size={14}/>:<Table2 size={14}/>} {block.type}</span><div><button type="button" aria-label="Move block up" disabled={index===0} onClick={()=>moveBlock(index,-1)}><ArrowUp size={14}/></button><button type="button" aria-label="Move block down" disabled={index===draft.blocks.length-1} onClick={()=>moveBlock(index,1)}><ArrowDown size={14}/></button><button type="button" aria-label="Remove block" onClick={()=>removeBlock(block.id)}><Trash2 size={14}/></button></div></header>
+          <div className="note-blocks note-spatial-layer" style={{width:canvasSize.width,height:canvasSize.height}} onPointerDown={addTextAt}>{draft.blocks.map(block=><article className={`note-block note-canvas-item ${selectedBlockId===block.id?'is-selected':''}`} data-block-id={block.id} data-block-type={block.type} key={block.id} ref={node=>{if(node)blockRefs.current.set(block.id,node);else blockRefs.current.delete(block.id)}} style={{left:block.layout.x,top:block.layout.y,width:block.layout.width,height:block.layout.height,zIndex:block.layout.z}} onPointerDown={event=>{event.stopPropagation();selectBlock(block.id)}}>
+            <header><span>{block.type==='text'?<Type size={14}/>:block.type==='link'?<Link2 size={14}/>:block.type==='image'?<Image size={14}/>:block.type==='code'?<Code2 size={14}/>:<Table2 size={14}/>} {block.type}</span><div><button type="button" className="note-move-handle" aria-label="Move block" title="Drag to move" onPointerDown={event=>startInteraction(event,block,'drag')}><Move size={14}/></button><button type="button" aria-label="Remove block" onClick={()=>removeBlock(block.id)}><Trash2 size={14}/></button></div></header>
             {block.type==='text'&&<textarea value={block.text} onChange={event=>changeBlock(block.id,{text:event.target.value})} placeholder="Write your notes…" rows={4} maxLength={100000}/>}
             {block.type==='link'&&<div className="note-link-fields"><label>Link label<input name="label" value={block.label} onChange={event=>changeBlock(block.id,{label:event.target.value})} placeholder="PostgreSQL documentation" maxLength={300}/></label><label>URL<input name="url" type="url" value={block.url} onChange={event=>changeBlock(block.id,{url:event.target.value})} placeholder="https://…" maxLength={2000}/></label>{safeLink(block.url)&&<a className="note-preview-link" href={block.url} target="_blank" rel="noreferrer"><Link2 size={14}/>{block.label||block.url}</a>}</div>}
             {block.type==='image'&&<div className="note-image-fields"><label className="note-image-picker"><Image size={17}/><span>{block.name||'Choose image · max 2 MB'}</span><input className="note-image-input" type="file" accept="image/png,image/jpeg,image/webp,image/gif" onChange={event=>upload(block,event.target.files?.[0])}/></label>{block.dataUrl&&<div className="note-image-preview"><img src={block.dataUrl} alt={block.alt}/></div>}<label>Image description<input name="alt" value={block.alt} onChange={event=>changeBlock(block.id,{alt:event.target.value})} placeholder="Describe this image" maxLength={500}/></label></div>}
             {block.type==='table'&&<div className="note-table-editor"><div className="note-table-scroll"><table><tbody>{block.rows.map((row,rowIndex)=><tr key={rowIndex}>{row.map((cell,columnIndex)=><td key={columnIndex}><input data-cell={`${rowIndex}:${columnIndex}`} aria-label={`Row ${rowIndex+1}, column ${columnIndex+1}`} value={cell} maxLength={2000} onChange={event=>changeCell(block,rowIndex,columnIndex,event.target.value)}/></td>)}</tr>)}</tbody></table></div><div className="note-table-actions"><button type="button" onClick={()=>addRow(block)} disabled={block.rows.length>=20}>+ Row</button><button type="button" onClick={()=>addColumn(block)} disabled={block.rows[0].length>=10}>+ Column</button><button type="button" onClick={()=>removeRow(block)} disabled={block.rows.length<=1}>− Row</button><button type="button" onClick={()=>removeColumn(block)} disabled={block.rows[0].length<=1}>− Column</button></div></div>}
             {block.type==='code'&&<div className="note-code-editor"><label>Language<select value={block.language} onChange={event=>changeBlock(block.id,{language:event.target.value})}>{codeLanguages.map(language=><option key={language} value={language}>{language}</option>)}</select></label><textarea value={block.code} onChange={event=>changeBlock(block.id,{code:event.target.value})} placeholder="Paste or write code…" rows={10} maxLength={100000} spellCheck="false"/></div>}
+            <button type="button" className="note-resize-handle" aria-label="Resize block" title="Drag to resize" onPointerDown={event=>startInteraction(event,block,'resize')}><Maximize2 size={13}/></button>
           </article>)}</div>
         </form>}</div>
       </section>
