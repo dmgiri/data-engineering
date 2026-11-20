@@ -26,7 +26,7 @@ The installer creates a production build and starts it at <http://127.0.0.1:4317
 For an unattended installation:
 
 ```bat
-install.cmd -NonInteractive -UserName "Asha"
+install.cmd -NonInteractive -UserName "Dipak"
 ```
 
 ## Start later

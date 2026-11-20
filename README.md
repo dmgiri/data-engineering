@@ -16,7 +16,7 @@ The production app opens at <http://127.0.0.1:4317>. Keep its command window ope
 For unattended installation:
 
 ```bat
-install.cmd -NonInteractive -UserName "Asha"
+install.cmd -NonInteractive -UserName "Dipak"
 ```
 
 Running the installer again updates and rebuilds the app while preserving `.data`, including questions, notes, settings, and progress. To move an existing installation, choose **restore backup** when prompted.
