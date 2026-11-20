@@ -56,6 +56,7 @@ try{
  assert.equal(await evaluate('getComputedStyle(document.querySelector(".workspace>.sidebar")).display'),'none','Material mode must remove dashboard navigation from the reading canvas');
  assert.equal(await evaluate('getComputedStyle(document.querySelector(".app-main>.topbar")).display'),'none','Material mode must replace the dashboard top bar');
  assert.equal(await evaluate('Boolean(document.querySelector(".material-docs-bar")&&document.querySelector(".material-chapter-trigger")&&document.querySelector(".material-on-page"))'),true,'Material mode must provide compact documentation controls');
+ assert.equal(await evaluate('(()=>{const button=document.querySelector("[data-action=close-material].workspace-close-button"),box=button?.getBoundingClientRect(),bar=document.querySelector(".material-docs-bar")?.getBoundingClientRect();return Boolean(button&&box.width>=90&&box.height>=40&&bar.right-box.right<=20)})()'),true,'Study Material must show a large Close button at the top right');
  assert.equal(await evaluate('getComputedStyle(document.querySelector(".material-page")).fontFamily.toLowerCase().includes("manrope")'),false,'Study material must use documentation typography rather than the rounded dashboard font');
  assert.equal(await evaluate('getComputedStyle(document.querySelector(".material-context-bar i")).backgroundColor===getComputedStyle(document.querySelector(".material-docs-progress>span")).backgroundColor'),true,'Documentation navigation status must use the Databricks blue accent, not green');
  assert.equal(await evaluate('parseFloat(getComputedStyle(document.querySelector(".material-reader>h1")).fontSize)'),20,'The lesson title must stay at the requested 20px size');
@@ -108,11 +109,12 @@ try{
  assert.equal(await evaluate('(()=>{const table=document.querySelector(".material-table-wrap");return table.scrollWidth>table.clientWidth&&table.getBoundingClientRect().right<=innerWidth})()'),true);
  await screenshot('study-material-mobile',true);await cdp('Emulation.setDeviceMetricsOverride',{width:1440,height:1050,deviceScaleFactor:1,mobile:false});
  pass('Study material provides 30 searchable days, 302 persisted checkpoints, safe Markdown, resume, and mobile reading');
+ await click('[data-action="close-material"]');await wait('document.querySelector(".course-dashboard")');
  await click('[data-view="notes"]');await wait('document.querySelector(".notes-workspace")');
  assert.equal(await evaluate('getComputedStyle(document.querySelector(".workspace>.sidebar")).display'), 'none','Notes must hide the portal sidebar');
  assert.equal(await evaluate('getComputedStyle(document.querySelector(".app-main>.topbar")).display'), 'none','Notes must hide the portal top bar');
  assert.equal(await evaluate('(()=>{const box=document.querySelector(".notes-workspace").getBoundingClientRect();return box.left===0&&box.top===0&&box.width===innerWidth&&box.height>=innerHeight})()'),true,'Notes must fill the browser window');
- assert.equal(await evaluate('Boolean(document.querySelector("[data-action=exit-notes]"))'),true,'Full-window Notes must provide an exit control');
+ assert.equal(await evaluate('(()=>{const button=document.querySelector("[data-action=exit-notes].workspace-close-button"),box=button?.getBoundingClientRect(),bar=document.querySelector(".note-command-bar")?.getBoundingClientRect();return Boolean(button&&box.width>=90&&box.height>=40&&bar.right-box.right<=20)})()'),true,'Full-window Notes must show a large Close button at the top right');
  assert.equal(await evaluate('Boolean(document.querySelector("[data-action=notes-theme]"))'),true,'Full-window Notes must retain its theme control');
  await click('[data-action="notes-theme"]');await wait('document.documentElement.dataset.theme==="dark"');await click('[data-action="notes-theme"]');await wait('document.documentElement.dataset.theme==="light"');
  assert.equal(await evaluate('Boolean(document.querySelector(".note-sections-pane")&&document.querySelector(".note-pages-pane")&&document.querySelector(".note-editor-shell"))'),true,'Notes must have separate section, page, and editor panes');

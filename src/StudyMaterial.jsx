@@ -79,6 +79,7 @@ export default function StudyMaterial({data,initialDay,initialSectionId,onExit,o
       <div className="material-docs-actions">
         <button className="material-docs-theme" aria-label={`Use ${data.settings.theme==='dark'?'light':'dark'} mode`} onClick={onTheme}>{data.settings.theme==='dark'?<Sun size={17}/>:<Moon size={17}/>}</button>
         <button ref={triggerRef} className="material-chapter-trigger" aria-expanded={chaptersOpen} aria-controls="material-course-drawer" onClick={()=>setChaptersOpen(true)}><PanelLeft size={17}/><span>Course index</span></button>
+        <button type="button" className="workspace-close-button" data-action="close-material" aria-label="Close study material and return to dashboard" onClick={onExit}><X size={18}/><span>Close</span></button>
       </div>
       <div className="material-docs-progress" aria-label={`${completed.size} of ${allSections.length} checkpoints complete`}><span style={{width:`${progress}%`}}/></div>
     </header>
