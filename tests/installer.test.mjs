@@ -16,19 +16,20 @@ function readScript(filename) {
   return readFileSync(join(root, filename), 'utf8');
 }
 
-function runScript(filename, args, cwd = root) {
+function runScript(filename, args, cwd = root, input) {
   return spawnSync(powershell, ['-NoLogo', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', filename, ...args], {
     cwd,
     encoding: 'utf8',
+    input,
     timeout: 20_000
   });
 }
 
-function makeProject() {
+function makeProject({ existingData = true } = {}) {
   const directory = mkdtempSync(join(tmpdir(), 'Engineer Prep installer '));
   mkdirSync(join(directory, '.data'), { recursive: true });
   mkdirSync(join(directory, 'build'), { recursive: true });
-  writeFileSync(join(directory, '.data', 'study.sqlite'), 'existing-study-data');
+  if (existingData) writeFileSync(join(directory, '.data', 'study.sqlite'), 'existing-study-data');
   writeFileSync(join(directory, 'build', 'index.html'), '<!doctype html>');
   writeFileSync(join(directory, 'package.json'), JSON.stringify({ scripts: { build: 'vite build', serve: 'node server/index.mjs' } }));
   copyFileSync(installerPath, join(directory, 'install.ps1'));
@@ -141,4 +142,52 @@ test('CMD entry points launch the production installer and application from any 
   assert.match(launcher, /ExecutionPolicy\s+Bypass/i);
   assert.match(launcher, /%\*/);
   assert.doesNotMatch(`${installer}\n${launcher}`, /run\s+dev|5173/i);
+});
+
+test('first installation requires a username and includes it in the production plan', () => {
+  const directory = makeProject({ existingData: false });
+  const result = runScript(join(directory, 'install.ps1'), ['-DryRun'], directory, [
+    '', 'Asha', 'n', 'n', 'n', 'n'
+  ].join('\r\n') + '\r\n');
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  assert.match(result.stdout, /Enter your name/i);
+  assert.match(result.stdout, /User name:\s*Asha/i);
+});
+
+test('reinstallation can keep the existing username with a blank response', () => {
+  const directory = makeProject();
+  const result = runScript(join(directory, 'install.ps1'), ['-DryRun'], directory, [
+    '', 'n', 'n', 'n', 'n'
+  ].join('\r\n') + '\r\n');
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  assert.match(result.stdout, /leave blank to keep/i);
+  assert.match(result.stdout, /User name:\s*keep existing/i);
+});
+
+test('non-interactive username is trimmed and rejects values over 40 characters', () => {
+  const directory = makeProject();
+  const accepted = runScript(join(directory, 'install.ps1'), [
+    '-NonInteractive', '-DryRun', '-UserName', '  Priya  ',
+    '-InstallDependencies', 'No', '-StartAfterInstall', 'No'
+  ], directory);
+  assert.equal(accepted.status, 0, accepted.stderr || accepted.stdout);
+  assert.match(accepted.stdout, /User name:\s*Priya/i);
+
+  const rejected = runScript(join(directory, 'install.ps1'), [
+    '-NonInteractive', '-DryRun', '-UserName', 'x'.repeat(41),
+    '-InstallDependencies', 'No', '-StartAfterInstall', 'No'
+  ], directory);
+  assert.notEqual(rejected.status, 0);
+  assert.match(`${rejected.stdout}\n${rejected.stderr}`, /40 characters or\s+fewer/i);
+});
+
+test('installer persists a supplied username through the local settings API after restore', () => {
+  const source = readScript('install.ps1');
+  assert.match(source, /UserName/);
+  assert.match(source, /api\/settings/i);
+  assert.match(source, /ConvertTo-Json/);
+  assert.ok(source.indexOf('Restore-StudyBackup') < source.lastIndexOf('Set-StudyUserName'));
+  const readme = readScript('README.md');
+  assert.match(readme, /ask[^\n]*name|name[^\n]*prompt/i);
+  assert.match(readme, /-UserName/i);
 });

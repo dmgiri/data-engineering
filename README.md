@@ -12,6 +12,7 @@ install.cmd
 
 The installer asks whether to:
 
+- set the name shown in the dashboard greeting;
 - install npm dependencies;
 - restore an existing JSON backup;
 - create an **Engineer Prep** desktop shortcut;
@@ -19,6 +20,8 @@ The installer asks whether to:
 - open it in your default browser.
 
 The production application is available only on your computer at http://127.0.0.1:4317. Keep the server window open while studying and press Ctrl+C in that window to stop it. It is intentionally not exposed to your local network or the internet.
+
+On a first installation, the name prompt is required. During reinstallation, leave it blank to keep the name already stored in SQLite. For an automated installation, pass a name explicitly, for example `install.cmd -NonInteractive -UserName "Asha"`.
 
 To launch it again later, use the desktop shortcut or double-click **`start-app.cmd`**. From Command Prompt, run:
 

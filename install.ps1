@@ -2,6 +2,7 @@
 param(
     [switch]$NonInteractive,
     [switch]$DryRun,
+    [string]$UserName = '',
     [ValidateSet('Ask', 'Yes', 'No')]
     [string]$InstallDependencies = 'Ask',
     [string]$RestoreBackupPath = '',
@@ -59,6 +60,48 @@ function Test-StudyApp {
     catch { return $false }
 }
 
+function Wait-ForStudyApp {
+    param([Diagnostics.Process]$ServerProcess, [string]$Purpose)
+    for ($attempt = 0; $attempt -lt 30; $attempt++) {
+        Start-Sleep -Milliseconds 500
+        if (Test-StudyApp) { return }
+        if ($ServerProcess.HasExited) { break }
+    }
+    throw "The local production server did not become ready for $Purpose."
+}
+
+function Read-InstallerUserName {
+    param([bool]$HasExistingData)
+    while ($true) {
+        if ($HasExistingData) { Write-Host 'Enter your name (leave blank to keep existing): ' -NoNewline }
+        else { Write-Host 'Enter your name: ' -NoNewline }
+        $value = (Read-Host).Trim()
+        if ($value -or $HasExistingData) { return $value }
+        Write-Host 'A name is required for the first installation.' -ForegroundColor Yellow
+    }
+}
+
+function Set-StudyUserName {
+    param([string]$Name)
+    $serverProcess = $null
+    try {
+        if (-not (Test-StudyApp)) {
+            $serverProcess = Start-Process -FilePath $NodeCommand -ArgumentList 'server/index.mjs' -WorkingDirectory $ProjectDirectory -WindowStyle Hidden -PassThru
+            Wait-ForStudyApp $serverProcess 'profile setup'
+        }
+        $headers = @{ 'X-Study-Client' = 'local' }
+        $body = @{ name = $Name } | ConvertTo-Json -Compress
+        $null = Invoke-RestMethod -Uri "$AppUrl/api/settings" -Method Put -Headers $headers -ContentType 'application/json' -Body $body -TimeoutSec 30
+        Write-Host "Dashboard name saved as $Name." -ForegroundColor Green
+    }
+    finally {
+        if ($serverProcess -and -not $serverProcess.HasExited) {
+            Stop-Process -Id $serverProcess.Id -Force -ErrorAction SilentlyContinue
+            $serverProcess.WaitForExit(5000) | Out-Null
+        }
+    }
+}
+
 function Restore-StudyBackup {
     param([string]$BackupPath)
     $raw = Get-Content -LiteralPath $BackupPath -Raw
@@ -69,13 +112,7 @@ function Restore-StudyBackup {
     try {
         if (-not (Test-StudyApp)) {
             $serverProcess = Start-Process -FilePath $NodeCommand -ArgumentList 'server/index.mjs' -WorkingDirectory $ProjectDirectory -WindowStyle Hidden -PassThru
-            $ready = $false
-            for ($attempt = 0; $attempt -lt 30; $attempt++) {
-                Start-Sleep -Milliseconds 500
-                if (Test-StudyApp) { $ready = $true; break }
-                if ($serverProcess.HasExited) { break }
-            }
-            if (-not $ready) { throw 'The local production server did not become ready for backup restoration.' }
+            Wait-ForStudyApp $serverProcess 'backup restoration'
         }
         $headers = @{ 'X-Study-Client' = 'local' }
         $null = Invoke-RestMethod -Uri "$AppUrl/api/import" -Method Post -Headers $headers -ContentType 'application/json' -Body $raw -TimeoutSec 30
@@ -109,6 +146,11 @@ try {
     $nodeVersion = Assert-NodeVersion
     Write-Host "Node.js $nodeVersion detected."
 
+    $hasExistingData = Test-Path -LiteralPath (Join-Path $ProjectDirectory '.data/study.sqlite') -PathType Leaf
+    $name = $UserName.Trim()
+    if (-not $NonInteractive -and -not $name) { $name = Read-InstallerUserName $hasExistingData }
+    if ($name.Length -gt 40) { throw 'Your name must be 40 characters or fewer.' }
+
     $install = Resolve-Choice $InstallDependencies 'Install dependencies now?' $true
     $shortcut = Resolve-Choice $CreateDesktopShortcut 'Create a desktop shortcut?' $false
     $start = Resolve-Choice $StartAfterInstall 'Start the application after installation?' $true
@@ -129,6 +171,7 @@ try {
         Write-Host "`nPRODUCTION INSTALLATION PLAN" -ForegroundColor Yellow
         Write-Host "Project: $ProjectDirectory"
         Write-Host "Preserve data: $(Join-Path $ProjectDirectory '.data')"
+        Write-Host "User name: $(if ($name) { $name } else { 'keep existing' })"
         Write-Host "Dependencies: $(if ($install) { "$NpmCommand install" } else { 'skip' })"
         Write-Host "Build: $NpmCommand run build"
         Write-Host "Restore backup: $(if ($backup) { $backup } else { 'no' })"
@@ -143,6 +186,7 @@ try {
         if ($install) { Invoke-NpmStep @('install') 'Installing production dependencies...' }
         Invoke-NpmStep @('run', 'build') 'Building the production application...'
         if ($backup) { Restore-StudyBackup $backup }
+        if ($name) { Set-StudyUserName $name }
         if ($shortcut) { New-StudyShortcut }
     }
     finally { Pop-Location }
