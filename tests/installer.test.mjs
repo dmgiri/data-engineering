@@ -121,12 +121,24 @@ test('production launcher validates a built app without starting a server', () =
 
 test('README explains production installation, safe updates, backups, shortcuts and launching', () => {
   const readme = readScript('README.md');
-  assert.match(readme, /\.\\install\.ps1/);
+  assert.match(readme, /install\.cmd/i);
   assert.match(readme, /Node\.js 24/i);
   assert.match(readme, /production/i);
   assert.match(readme, /preserv(?:e|es|ed|ing)[^\n]*\.data/i);
   assert.match(readme, /restore[^\n]*backup/i);
   assert.match(readme, /desktop shortcut/i);
-  assert.match(readme, /\.\\start-app\.ps1/);
+  assert.match(readme, /start-app\.cmd/i);
   assert.match(readme, /127\.0\.0\.1:4317/);
+});
+
+test('CMD entry points launch the production installer and application from any working directory', () => {
+  const installer = readScript('install.cmd');
+  const launcher = readScript('start-app.cmd');
+  assert.match(installer, /%~dp0install\.ps1/i);
+  assert.match(installer, /ExecutionPolicy\s+Bypass/i);
+  assert.match(installer, /%\*/);
+  assert.match(launcher, /%~dp0start-app\.ps1/i);
+  assert.match(launcher, /ExecutionPolicy\s+Bypass/i);
+  assert.match(launcher, /%\*/);
+  assert.doesNotMatch(`${installer}\n${launcher}`, /run\s+dev|5173/i);
 });

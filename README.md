@@ -4,10 +4,10 @@ React, Redux Toolkit, Framer Motion, Lucide icons, CSS Grid, and Node's built-in
 
 ## Install on Windows
 
-This installation runs the production application only. Install [Node.js 24 or newer](https://nodejs.org/), then download or clone this repository and open PowerShell inside its folder.
+This installation runs the production application only. Install [Node.js 24 or newer](https://nodejs.org/), then download or clone this repository. Double-click **`install.cmd`**, or open Command Prompt inside the project folder and run:
 
-```powershell
-powershell -ExecutionPolicy Bypass -File .\install.ps1
+```bat
+install.cmd
 ```
 
 The installer asks whether to:
@@ -20,13 +20,13 @@ The installer asks whether to:
 
 The production application is available only on your computer at http://127.0.0.1:4317. Keep the server window open while studying and press Ctrl+C in that window to stop it. It is intentionally not exposed to your local network or the internet.
 
-To launch it again later, use the desktop shortcut or run:
+To launch it again later, use the desktop shortcut or double-click **`start-app.cmd`**. From Command Prompt, run:
 
-```powershell
-powershell -ExecutionPolicy Bypass -File .\start-app.ps1 -OpenBrowser
+```bat
+start-app.cmd
 ```
 
-Running `install.ps1` again updates dependencies and rebuilds the application. Reinstallation preserves `.data`, including the SQLite database, notes, images, study progress, bookmarks, and settings. The installer never deletes `.data`.
+Running `install.cmd` again updates dependencies and rebuilds the application. Reinstallation preserves `.data`, including the SQLite database, notes, images, study progress, bookmarks, and settings. The installer never deletes `.data`.
 
 To move records from another installation, export a JSON backup from **Settings → Export backup**, then choose the restore option when the installer prompts you. An invalid backup is rejected by the same transactional validation used inside the application, leaving the current database unchanged.
 

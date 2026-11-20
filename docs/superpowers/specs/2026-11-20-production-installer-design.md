@@ -6,7 +6,7 @@ Make the downloaded or cloned Windows project straightforward for a friend to in
 
 ## Goals
 
-- Provide one root-level `install.ps1` entry point and one `start-app.ps1` launcher.
+- Provide double-clickable root-level `install.cmd` and `start-app.cmd` entry points, backed by focused PowerShell implementation scripts.
 - Require Windows PowerShell and Node.js 24 or newer, with clear corrective errors.
 - Ask whether to install dependencies, restore a JSON backup, create a desktop shortcut, start the app, and open it in the default browser.
 - Install dependencies, create the production build, and keep the server bound to `127.0.0.1:4317`.
@@ -21,7 +21,7 @@ Make the downloaded or cloned Windows project straightforward for a friend to in
 
 ## Approach
 
-Use native PowerShell because the intended users are on Windows and the repository already uses PowerShell commands. A Node-based installer would still need a working Node runtime before it could explain that Node is missing; a packaged Windows installer would add release/signing overhead that is unnecessary for a local tool.
+Use CMD entry points because they can be double-clicked without changing PowerShell execution policy. They invoke native PowerShell implementation scripts with a process-scoped bypass. A Node-based installer would still need a working Node runtime before it could explain that Node is missing; a packaged Windows installer would add release/signing overhead that is unnecessary for a local tool.
 
 `install.ps1` resolves all paths relative to itself, validates prerequisites, gathers choices with `Read-Host`, runs `npm.cmd install` and `npm.cmd run build`, optionally creates a `.lnk` shortcut, and optionally launches `start-app.ps1`. Backup restoration starts the production server temporarily when necessary and sends the selected JSON to the existing validated local import API. `start-app.ps1` validates the build, refuses to compete with another listener unless that listener is the working app, opens the browser only when requested, and runs `npm.cmd run serve` in the foreground so Ctrl+C stops it cleanly.
 

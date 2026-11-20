@@ -4,7 +4,7 @@
 
 **Goal:** Add an interactive production-only Windows installer and launcher for the local study portal.
 
-**Architecture:** Two root-level PowerShell scripts perform installation and launching. Tests execute their non-mutating validation/dry-run paths and inspect the real scripts, while the existing Node suite protects application behavior.
+**Architecture:** Double-clickable CMD entry points invoke two root-level PowerShell implementation scripts for installation and launching. Tests execute their non-mutating validation/dry-run paths and inspect the real scripts, while the existing Node suite protects application behavior.
 
 **Tech Stack:** Windows PowerShell 5.1+, Node.js 24+, npm, Vite, Node HTTP/SQLite server
 
@@ -31,6 +31,8 @@
 
 **Files:**
 - Create: `tests/installer.test.mjs`
+- Create: `install.cmd`
+- Create: `start-app.cmd`
 - Create: `install.ps1`
 - Create: `start-app.ps1`
 
