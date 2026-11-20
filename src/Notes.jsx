@@ -1,6 +1,7 @@
 import {useEffect,useMemo,useRef,useState} from 'react';
 import {ChevronDown,ChevronLeft,ChevronRight,Code2,FilePlus2,FileText,FolderPlus,Image,Link2,Maximize2,Moon,MoreHorizontal,Move,NotebookTabs,Palette,PanelLeftClose,PanelLeftOpen,Pencil,Plus,Save,Search,Sun,Table2,Trash2,Type,X} from 'lucide-react';
 import {mutate,notify,uid} from './store';
+import {clipboardImage,validateNoteImage} from './note-image-clipboard.mjs';
 
 const copy=value=>JSON.parse(JSON.stringify(value));
 const blockSize={text:[600,150],link:[600,180],image:[600,320],table:[620,250],code:[680,340]};
@@ -80,10 +81,10 @@ export default function Notes({data,onExit,onTheme}){
   };
   const changePage=changes=>{setDraft(current=>({...current,...changes}));setDirty(true)};
   const changeBlock=(blockId,changes)=>{setDraft(current=>({...current,blocks:current.blocks.map(block=>block.id===blockId?{...block,...changes}:block)}));setDirty(true)};
-  const addBlock=(type,point,{temporary=false}={})=>{
+  const addBlock=(type,point,{temporary=false,initial={}}={})=>{
     const insertion=point||{x:36,y:Math.max(36,...draft.blocks.map(block=>block.layout.y+block.layout.height+24))},id=uid(),previousTemporary=temporary?new Set(temporaryBlockIds.current):null;focusBlockId.current=id;
     if(temporary){temporaryBlockIds.current.clear();temporaryBlockIds.current.add(id)}
-    setDraft(current=>{const retained=previousTemporary?current.blocks.filter(block=>!previousTemporary.has(block.id)||(block.type==='text'&&block.text.trim())):current.blocks,top=Math.max(0,...retained.map(block=>block.layout.z)),blocks=top>=10000?[...retained].sort((a,b)=>a.layout.z-b.layout.z).map((block,index)=>({...block,layout:{...block.layout,z:index}})):retained,z=top>=10000?blocks.length:top+1,block={...blockFor(type,layoutFor(type,insertion.x,insertion.y,z)),id};return {...current,blocks:[...blocks,block]}});
+    setDraft(current=>{const retained=previousTemporary?current.blocks.filter(block=>!previousTemporary.has(block.id)||(block.type==='text'&&block.text.trim())):current.blocks,top=Math.max(0,...retained.map(block=>block.layout.z)),blocks=top>=10000?[...retained].sort((a,b)=>a.layout.z-b.layout.z).map((block,index)=>({...block,layout:{...block.layout,z:index}})):retained,z=top>=10000?blocks.length:top+1,block={...blockFor(type,layoutFor(type,insertion.x,insertion.y,z)),...initial,id};return {...current,blocks:[...blocks,block]}});
     setSelectedBlockId(id);if(!temporary)setDirty(true);
   };
   const addTextAt=event=>{if(event.button!==0||event.target!==event.currentTarget)return;const bounds=event.currentTarget.getBoundingClientRect();addBlock('text',{x:event.clientX-bounds.left,y:event.clientY-bounds.top},{temporary:true})};
@@ -134,10 +135,26 @@ export default function Notes({data,onExit,onTheme}){
   const removeColumn=block=>{if(block.rows[0].length>1)changeBlock(block.id,{rows:block.rows.map(row=>row.slice(0,-1))})};
   const upload=(block,file)=>{
     if(!file)return;
-    if(!['image/png','image/jpeg','image/webp','image/gif'].includes(file.type))return notify('Choose a PNG, JPEG, WebP, or GIF image.');
-    if(file.size>2*1024*1024)return notify('Keep each note image under 2 MB.');
+    const error=validateNoteImage(file);if(error)return notify(error);
     const reader=new FileReader();reader.onload=()=>changeBlock(block.id,{name:file.name,dataUrl:String(reader.result)});reader.onerror=()=>notify('The image could not be read.');reader.readAsDataURL(file);
   };
+  useEffect(()=>{
+    if(!draft)return;
+    let disposed=false;
+    const paste=event=>{
+      const target=event.target;
+      if(target instanceof Element&&target.closest('input,textarea,select,a,[contenteditable="true"]'))return;
+      const file=clipboardImage(event.clipboardData?.items);if(!file)return;
+      event.preventDefault();
+      const error=validateNoteImage(file);if(error)return notify(error);
+      const reader=new FileReader();
+      reader.onload=()=>{if(!disposed)addBlock('image',null,{initial:{name:file.name||'Pasted image',dataUrl:String(reader.result)}})};
+      reader.onerror=()=>{if(!disposed)notify('The image could not be read.')};
+      reader.readAsDataURL(file);
+    };
+    window.addEventListener('paste',paste);
+    return()=>{disposed=true;window.removeEventListener('paste',paste)};
+  },[draft]);
   const save=async event=>{event.preventDefault();if(!draft.title.trim())return notify('Add a page title before saving.');const prepared={...draft,blocks:draft.blocks.filter(block=>block.type!=='text'||block.text.trim())};if(prepared.blocks.some(block=>block.type==='image'&&!block.dataUrl))return notify('Choose an image or remove the empty image block.');if(await mutate('/api/notes','POST',prepared)){temporaryBlockIds.current.clear();setDraft(prepared);setSelectedBlockId(current=>prepared.blocks.some(block=>block.id===current)?current:null);setDirty(false);notify('Page saved to SQLite.')}};
   const remove=async()=>{if(!saved||!window.confirm('Delete this page permanently?'))return;if(await mutate('/api/notes/'+selectedId,'DELETE',{})){setDirty(false);setSelectedId(null);setDraft(null);notify('Page deleted.')}};
   const exitNotes=()=>{if(confirmDiscard())onExit?.()};
