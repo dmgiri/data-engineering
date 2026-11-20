@@ -108,3 +108,15 @@ test('production launcher validates a built app without starting a server', () =
   assert.doesNotMatch(source, /5173|run\s+dev/i);
 });
 
+test('README explains production installation, safe updates, backups, shortcuts and launching', () => {
+  const readme = readScript('README.md');
+  assert.match(readme, /\.\\install\.ps1/);
+  assert.match(readme, /Node\.js 24/i);
+  assert.match(readme, /production/i);
+  assert.match(readme, /preserv(?:e|es|ed|ing)[^\n]*\.data/i);
+  assert.match(readme, /restore[^\n]*backup/i);
+  assert.match(readme, /desktop shortcut/i);
+  assert.match(readme, /\.\\start-app\.ps1/);
+  assert.match(readme, /127\.0\.0\.1:4317/);
+});
+

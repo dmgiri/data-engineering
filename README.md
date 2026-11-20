@@ -2,25 +2,46 @@
 
 React, Redux Toolkit, Framer Motion, Lucide icons, CSS Grid, and Node's built-in SQLite. Built for a data engineer with 7+ years of experience. No cloud account, AI service, or deployment is involved.
 
-## Run locally
+## Install on Windows
 
-Requires Node.js 24 or newer:
+This installation runs the production application only. Install [Node.js 24 or newer](https://nodejs.org/), then download or clone this repository and open PowerShell inside its folder.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\install.ps1
+```
+
+The installer asks whether to:
+
+- install npm dependencies;
+- restore an existing JSON backup;
+- create an **Engineer Prep** desktop shortcut;
+- start the application; and
+- open it in your default browser.
+
+The production application is available only on your computer at http://127.0.0.1:4317. Keep the server window open while studying and press Ctrl+C in that window to stop it. It is intentionally not exposed to your local network or the internet.
+
+To launch it again later, use the desktop shortcut or run:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\start-app.ps1 -OpenBrowser
+```
+
+Running `install.ps1` again updates dependencies and rebuilds the application. Reinstallation preserves `.data`, including the SQLite database, notes, images, study progress, bookmarks, and settings. The installer never deletes `.data`.
+
+To move records from another installation, export a JSON backup from **Settings → Export backup**, then choose the restore option when the installer prompts you. An invalid backup is rejected by the same transactional validation used inside the application, leaving the current database unchanged.
+
+If installation stops, read the error shown in PowerShell. The most common causes are Node.js older than version 24, port 4317 being used by another program, or running the command outside the downloaded project folder. Node's SQLite experimental-feature notice is expected.
+
+## Development
+
+Contributors can run the Vite development server separately:
 
 ```powershell
 npm.cmd install
 npm.cmd run dev
 ```
 
-Open http://127.0.0.1:5173. The API binds to 127.0.0.1:4317. Both servers are loopback-only. Stop with Ctrl+C. Node's SQLite experimental-feature notice is expected.
-
-For a built app without the development server:
-
-```powershell
-npm.cmd run build
-npm.cmd run serve
-```
-
-Then open http://127.0.0.1:4317. Do not expose either server to a public network.
+Development uses http://127.0.0.1:5173 with the API on port 4317. Do not expose either server to a public network.
 
 ## Study workflow
 
