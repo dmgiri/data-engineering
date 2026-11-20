@@ -31,7 +31,8 @@ function Resolve-Choice {
 }
 
 function Assert-NodeVersion {
-    $rawVersion = & $NodeCommand --version 2>$null
+    try { $rawVersion = & $NodeCommand --version 2>$null }
+    catch { throw 'Node.js 24 or newer is required. Install it from https://nodejs.org/ and run this installer again.' }
     if ($LASTEXITCODE -ne 0 -or -not $rawVersion) {
         throw 'Node.js 24 or newer is required. Install it from https://nodejs.org/ and run this installer again.'
     }
@@ -160,4 +161,3 @@ catch {
     Write-Error $_.Exception.Message
     exit 1
 }
-

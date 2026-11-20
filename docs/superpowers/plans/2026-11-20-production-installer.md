@@ -60,4 +60,3 @@
 - [ ] Update `README.md` with the production workflow and troubleshooting.
 - [ ] Run the installer test, complete suite, production build, and dry-run installer.
 - [ ] Commit the documentation.
-

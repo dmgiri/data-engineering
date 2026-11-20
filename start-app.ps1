@@ -36,7 +36,8 @@ try {
         throw 'Production build not found. Run .\install.ps1 first.'
     }
 
-    $rawVersion = & $NodeCommand --version 2>$null
+    try { $rawVersion = & $NodeCommand --version 2>$null }
+    catch { throw 'Node.js 24 or newer is required. Install it from https://nodejs.org/ and run this launcher again.' }
     if ($LASTEXITCODE -ne 0 -or -not $rawVersion) { throw 'Node.js 24 or newer is required.' }
     $version = [version](($rawVersion | Select-Object -First 1).Trim() -replace '^v', '')
     if ($version.Major -lt 24) { throw "Node.js 24 or newer is required. Found $version." }
@@ -81,4 +82,3 @@ catch {
     Write-Error $_.Exception.Message
     exit 1
 }
-

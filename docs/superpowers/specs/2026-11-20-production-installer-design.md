@@ -31,4 +31,3 @@ Use native PowerShell because the intended users are on Windows and the reposito
 - Backup restoration uses the application API, which validates and applies restores transactionally.
 - All commands run from the repository root and all HTTP checks target loopback only.
 - A failed dependency install, build, shortcut creation, restore, or launch exits with a useful message.
-

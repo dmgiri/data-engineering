@@ -80,6 +80,17 @@ test('installer rejects Node versions older than 24 before installation actions'
   assert.doesNotMatch(result.stdout, /npm\.cmd install/i);
 });
 
+test('installer explains how to recover when Node is missing', () => {
+  const directory = makeProject();
+  const missingNode = join(directory, 'missing-node.exe');
+  const result = runScript(join(directory, 'install.ps1'), [
+    '-NonInteractive', '-DryRun', '-NodeCommand', missingNode,
+    '-InstallDependencies', 'No', '-StartAfterInstall', 'No'
+  ], directory);
+  assert.notEqual(result.status, 0);
+  assert.match(`${result.stdout}\n${result.stderr}`, /Node\.js 24 or newer is required.*nodejs\.org/is);
+});
+
 test('backup restoration is selected explicitly and remains non-mutating during dry run', () => {
   const directory = makeProject();
   const backup = join(directory, 'my backup.json');
@@ -119,4 +130,3 @@ test('README explains production installation, safe updates, backups, shortcuts 
   assert.match(readme, /\.\\start-app\.ps1/);
   assert.match(readme, /127\.0\.0\.1:4317/);
 });
-
