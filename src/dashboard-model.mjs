@@ -1,6 +1,12 @@
 const asUtc=date=>new Date(`${date}T12:00:00Z`);
 const dateKey=date=>date.toISOString().slice(0,10);
 
+export function weeklyChartPoints(week,targetMinutes,width=600){
+  const denominator=Math.max(targetMinutes,1);
+  const step=week.length>1?width/(week.length-1):0;
+  return week.map((day,index)=>({x:index*step,y:96-Math.min(90,day.minutes/denominator*80)}));
+}
+
 export function dashboardModel(data,asOf){
   const reference=asUtc(asOf);
   const sessionMinutes=new Map();

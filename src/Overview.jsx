@@ -1,5 +1,5 @@
 import {ArrowRight,BarChart3,BookOpen,Check,Clock3,Code2,Database,FileText,Flame,Layers,Play,Server,Target,Zap} from 'lucide-react';
-import {dashboardModel} from './dashboard-model.mjs';
+import {dashboardModel,weeklyChartPoints} from './dashboard-model.mjs';
 import {today} from './store';
 
 const icons={sql:Database,postgres:Server,python:Code2,pyspark:Zap,databricks:Layers,architecture:Layers};
@@ -10,8 +10,8 @@ function ProgressRing({value,label}){
 }
 
 function ProgressChart({model}){
-  const points=model.week.map((day,index)=>`${index*100/6},${96-Math.min(90,day.minutes/Math.max(model.targetMinutes,1)*80)}`).join(' ');
-  return <div className="hud-line-chart" role="img" aria-label={`Weekly study activity, ${model.weeklyMinutes} minutes`}><svg viewBox="0 0 600 110" preserveAspectRatio="none" aria-hidden="true"><defs><linearGradient id="hud-area" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="var(--accent)" stopOpacity=".28"/><stop offset="1" stopColor="var(--accent)" stopOpacity="0"/></linearGradient></defs><path d={`M0 100 L${points.replaceAll(' ',', L')} L100 110 L0 110 Z`} fill="url(#hud-area)"/><polyline points={points} className="hud-chart-line"/></svg><div>{model.week.map(day=><span key={day.date}>{day.label}</span>)}</div></div>;
+  const coordinates=weeklyChartPoints(model.week,model.targetMinutes).map(point=>`${point.x},${point.y}`).join(' ');
+  return <div className="hud-line-chart" role="img" aria-label={`Weekly study activity, ${model.weeklyMinutes} minutes`}><svg viewBox="0 0 600 110" preserveAspectRatio="none" aria-hidden="true"><defs><linearGradient id="hud-area" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="var(--accent)" stopOpacity=".28"/><stop offset="1" stopColor="var(--accent)" stopOpacity="0"/></linearGradient></defs><path d={`M0 100 L${coordinates.replaceAll(' ',', L')} L600 110 L0 110 Z`} fill="url(#hud-area)"/><polyline points={coordinates} className="hud-chart-line"/></svg><div>{model.week.map(day=><span key={day.date}>{day.label}</span>)}</div></div>;
 }
 
 function WeekBars({model}){
@@ -30,7 +30,7 @@ export default function Overview({data,current,onNavigate,onOpen,onStart}){
 
     <section className="hud-top-grid" aria-label="Today's preparation summary">
       <article className="hud-card hud-target-card"><div className="hud-card-title"><Clock3 size={21}/><strong>Today's Target</strong></div><p>{model.targetMinutes} minutes of focused preparation</p><div className="hud-target-body"><div><strong>{model.targetMinutes}<small>min</small></strong><button className="hud-primary" onClick={()=>onStart(current.subject,true)}><Play size={15} fill="currentColor"/>Start Study Session</button></div><ProgressRing value={targetPercent} label="Today's target completed"/></div></article>
-      <article className="hud-card hud-streak-card"><div className="hud-card-title"><Flame size={21}/><strong>{model.streak || 'Start'}-Day Streak</strong></div><p>{model.streak?'Keep the momentum!':'Today is a good day to begin.'}</p><strong className="hud-streak-value">{model.streak}<small>days</small></strong></article>
+      <article className="hud-card hud-streak-card"><div className="hud-card-title"><Flame size={21}/><strong>{model.streak?`${model.streak}-Day Streak`:'Start a streak'}</strong></div><p>{model.streak?'Keep the momentum!':'Today is a good day to begin.'}</p><strong className="hud-streak-value">{model.streak}<small>days</small></strong></article>
       <article className="hud-card hud-resume-card"><div className="hud-card-title"><FileText size={21}/><strong>Resume Study</strong></div><p>{current.topic}</p><button className="hud-secondary" onClick={()=>onNavigate('material',{materialDay:current.day,materialSectionId:null})}>Open Day {String(current.day).padStart(2,'0')} material <ArrowRight size={15}/></button></article>
     </section>
 

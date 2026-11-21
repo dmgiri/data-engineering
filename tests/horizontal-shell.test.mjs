@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {globalNavigation,navigationState} from '../src/navigation.mjs';
-import {dashboardModel} from '../src/dashboard-model.mjs';
+import {dashboardModel,weeklyChartPoints} from '../src/dashboard-model.mjs';
 
 test('global navigation exposes every portal destination in horizontal order',()=>{
   assert.deepEqual(globalNavigation.map(item=>item.id),[
@@ -37,5 +37,12 @@ test('dashboard model derives target, streak, weekly activity and topic readines
   assert.deepEqual(model.readiness.map(item=>[item.id,item.percent]),[['sql',50],['python',100]]);
   assert.equal(model.week.reduce((sum,day)=>sum+day.minutes,0),135);
   assert.equal(model.week.at(-1).date,'2026-11-20');
+});
+
+test('weekly chart points span the full 600-unit plot width',()=>{
+  const week=[0,15,30,45,60,75,90].map(minutes=>({minutes}));
+  const points=weeklyChartPoints(week,60);
+  assert.deepEqual(points.map(point=>point.x),[0,100,200,300,400,500,600]);
+  assert.equal(points.length,7);
 });
 
