@@ -1,8 +1,9 @@
 import React,{useEffect,useState,useRef,lazy,Suspense} from 'react';
 import {useDispatch,useSelector} from 'react-redux';
 import {motion,AnimatePresence,useReducedMotion} from 'framer-motion';
-import {Command,LayoutDashboard,BookOpen,CalendarDays,ChartNoAxesCombined,Settings2,Search,Sun,Moon,ArrowUpRight,ArrowRight,ChevronRight,ChevronLeft,Play,Pause,Check,Plus,X,Bookmark,Database,Layers,Code2,Zap,Server,Maximize2,Minimize2,Clock3,RotateCcw,Download,Upload,CheckCheck,Target,Flame,PanelLeftClose,PanelLeftOpen,Menu,NotebookPen,NotebookTabs} from 'lucide-react';
+import {Command,LayoutDashboard,BookOpen,CalendarDays,ChartNoAxesCombined,Settings2,Search,Sun,Moon,ArrowUpRight,ArrowRight,ChevronRight,ChevronLeft,Play,Pause,Check,Plus,X,Bookmark,Database,Layers,Code2,Zap,Server,Maximize2,Minimize2,Clock3,RotateCcw,Download,Upload,CheckCheck,Target,Flame,NotebookPen,NotebookTabs} from 'lucide-react';
 import {store,patch,load,mutate,api,notify,uid,today,download,cacheDraft,persistDraft} from './store';
+import {globalNavigation,navigationState} from './navigation.mjs';
 import Overview from './Overview';
 import QuestionAnswer from './QuestionAnswer';
 import QuestionLibrary from './QuestionLibrary';
@@ -11,6 +12,7 @@ const StudyMaterial=lazy(()=>import('./StudyMaterial'));
 const Notes=lazy(()=>import('./Notes'));
 
 const icons={sql:Database,postgres:Server,python:Code2,pyspark:Zap,databricks:Layers,architecture:Layers};
+const navigationIcons={desk:LayoutDashboard,library:BookOpen,material:NotebookTabs,notes:NotebookPen,plan:CalendarDays,journal:ChartNoAxesCombined,settings:Settings2};
 const labels={desk:'Study desk',library:'Question library',material:'Study material',notes:'My notes',plan:'30-day plan',journal:'Study journal',settings:'Preferences'};
 const minutes=n=>n<60?`${n}m`:`${Math.floor(n/60)}h${n%60?` ${n%60}m`:''}`;
 const dateText=(date,opts={day:'numeric',month:'short'})=>new Intl.DateTimeFormat('en-GB',{timeZone:'UTC',...opts}).format(new Date(date+'T12:00:00Z'));
@@ -28,8 +30,7 @@ function planDay(data){return data.plan.find(day=>day.date===today())||data.plan
 export default function App(){
   const state=useDesk(),{data,loading,view,focus}=state,dispatch=useDispatch(),reduced=useReducedMotion();
   const [preferencesKey,setPreferencesKey]=useState(0);
-  const [menu,setMenu]=useState(false),[modal,setModal]=useState(null);
-  const [navCollapsed,setNavCollapsed]=useState(false);
+  const [modal,setModal]=useState(null);
   const [timer,setTimer]=useState(()=>{try{return JSON.parse(sessionStorage.getItem('study-hud-timer'))}catch{return null}});
   const [tick,setTick]=useState(Date.now());
   useEffect(()=>{load()},[]);
@@ -38,52 +39,43 @@ export default function App(){
   useEffect(()=>{if(data)document.documentElement.dataset.theme=data.settings.theme},[data?.settings.theme]);
   useEffect(()=>{
     const key=e=>{
-      if(e.key==='Escape'){dispatch(patch({focus:false}));setMenu(false)}
-      if((e.key==='k'&&(e.ctrlKey||e.metaKey))||(e.key==='/'&&!/INPUT|TEXTAREA|SELECT/.test(e.target.tagName))){e.preventDefault();searchLibrary();setMenu(false)}
+      if(e.key==='Escape')dispatch(patch({focus:false}));
+      if((e.key==='k'&&(e.ctrlKey||e.metaKey))||(e.key==='/'&&!/INPUT|TEXTAREA|SELECT/.test(e.target.tagName))){e.preventDefault();searchLibrary()}
     };
     window.addEventListener('keydown',key);return()=>window.removeEventListener('keydown',key);
   },[]);
-  useEffect(()=>{
-    if(!menu)return;
-    const sidebar=document.querySelector('.sidebar'),trigger=document.activeElement;
-    const items=()=>[...sidebar.querySelectorAll('button,a')].filter(el=>el.getClientRects().length);
-    items()[0]?.focus();
-    const trap=e=>{if(e.key!=='Tab')return;const list=items();if(e.shiftKey&&document.activeElement===list[0]){e.preventDefault();list.at(-1)?.focus()}else if(!e.shiftKey&&document.activeElement===list.at(-1)){e.preventDefault();list[0]?.focus()}};
-    sidebar.addEventListener('keydown',trap);return()=>{sidebar.removeEventListener('keydown',trap);trigger?.isConnected&&trigger.focus()};
-  },[menu]);
   const elapsed=timer?timer.elapsed+(timer.startedAt?Math.max(0,tick-timer.startedAt):0):0;
   const startTimer=(subject,onlyStart=false)=>{if(timer&&onlyStart)return;if(!timer)setTimer({id:uid(),subject:subject||planDay(data).subject,date:today(),elapsed:0,startedAt:Date.now(),note:''});else setTimer({...timer,elapsed,startedAt:timer.startedAt?null:Date.now()})};
   const finishTimer=()=>{if(!timer)return;if(elapsed<60000)return notify('Complete one minute or log your study time manually.');setTimer({...timer,elapsed,startedAt:null});setModal({type:'session',session:{id:timer.id,date:timer.date,subject:timer.subject,minutes:Math.floor(elapsed/60000),note:timer.note},timer:true})};
   if(loading||!data)return <div className="boot"><Command size={30}/><h1>Engineer Prep</h1><p>{state.error||'Opening your study workspace…'}</p>{state.error&&<button className="primary-button" onClick={()=>load()}>Retry local connection</button>}</div>;
-  const current=planDay(data),practiced=studiedQuestions(data);
-  const dayComplete=data.plan.filter(d=>d.questionIds.length>0&&d.questionIds.every(id=>practiced.has(id))&&dailyTotal(data,d.date)>=d.minutes).length;
-  const navigate=(destination,extra={})=>{go(destination,extra);setMenu(false)};
+  const current=planDay(data);
+  const navigate=(destination,extra={})=>go(destination,extra);
+  const activeNavigation=navigationState(view);
   return <div className={`desktop ${focus?'is-focused':''}`} data-screen={view}>
     <a className="skip-link" href="#main">Skip to study content</a>
-    <div className={`workspace ${navCollapsed?'nav-collapsed':''}`}>
-      <aside className={`sidebar ${menu?'mobile-open':''}`} role={menu?'dialog':undefined} aria-modal={menu||undefined} aria-label="Study navigation">
-        <div className="sidebar-brand-row"><a href="#desk" className="brand" aria-label="Engineer Prep dashboard" onClick={e=>{e.preventDefault();navigate('desk')}}><span className="brand-symbol">E</span><span className="sidebar-brand-label">Engineer Prep</span></a><div className="sidebar-controls"><button className="icon-button sidebar-collapse" aria-label={navCollapsed?'Expand navigation':'Collapse navigation'} aria-expanded={!navCollapsed} title={navCollapsed?'Expand navigation':'Collapse navigation'} onClick={()=>setNavCollapsed(value=>!value)}>{navCollapsed?<PanelLeftOpen size={18}/>:<PanelLeftClose size={18}/>}</button><button className="icon-button sidebar-close" aria-label="Close navigation" onClick={()=>setMenu(false)}><X size={19}/></button></div></div>
-        <nav className="sidebar-primary">{[
-          ['desk',LayoutDashboard,'Dashboard'],['library',BookOpen,'Q&A library'],['material',NotebookTabs,'Study material'],['notes',NotebookPen,'My notes'],['plan',CalendarDays,'30-day plan'],['journal',ChartNoAxesCombined,'Daily progress'],['settings',Settings2,'Settings']
-        ].map(([id,Icon,label])=><button key={id} data-view={id} aria-label={label} title={navCollapsed?label:undefined} aria-current={view===id?'page':undefined} className={`nav-item ${view===id||(id==='library'&&view==='study')?'active':''}`} onClick={()=>navigate(id,id==='library'?{subject:'all',topic:'all',search:'',savedOnly:false}:id==='material'?{materialDay:null,materialSectionId:null}:{})}><Icon size={18}/><span>{label}</span>{id==='library'&&<ChevronRight size={14}/>}</button>)}</nav>
-        <div className="sidebar-plan"><span className="plan-card-icon"><Target size={29}/></span><h3>One month.<br/>A stronger foundation.</h3><p>{minutes(data.settings.weekdayMinutes)} each weekday<br/>{minutes(data.settings.weekendMinutes*2)} across Sat + Sun</p><div className="thin-progress"><span style={{width:dayComplete/30*100+'%'}}/></div><button onClick={()=>navigate('plan')}>View study plan <ArrowRight size={14}/></button></div>
-      </aside>
-      {menu&&<button className="mobile-overlay" aria-label="Close navigation" onClick={()=>setMenu(false)}/>}
-      <div className="app-main" inert={menu||undefined}>
-        <header className="topbar">
-          <button className="icon-button mobile-menu" aria-label="Open navigation" onClick={()=>setMenu(true)}><Menu size={20}/></button>
-          {view==='desk'?<div className="welcome-header"><span className="welcome-avatar">{data.settings.name.slice(0,1).toUpperCase()}</span><div><h1>Hello {data.settings.name}!</h1><p>Let's prepare for your next opportunity.</p></div></div>:<div className="breadcrumbs"><span>Workspace</span><ChevronRight size={12}/><strong>{labels[view]||'Questions & answers'}</strong></div>}
-          <div className="topbar-right">
+    <div className="workspace">
+      <header className="app-header">
+        <div className="app-header-row">
+          <a href="#desk" className="brand" aria-label="Engineer Prep dashboard" onClick={event=>{event.preventDefault();navigate('desk')}}><span className="brand-symbol">E</span><span className="brand-copy"><strong>Engineer Prep</strong><small>Senior Data Engineer</small></span></a>
+          <div className="app-header-tools">
             <span className={`save-status ${state.error?'error':''}`} title={state.error||'Saved to your local SQLite database'}><i/>{state.saving?'Saving…':state.error?'Save failed':'Saved locally'}</span>
-            <button className="icon-button header-search" aria-label="Search question library" onClick={searchLibrary}><Search size={17}/><span>Search...</span></button>
+            <button className="icon-button header-search" aria-label="Search question library" onClick={searchLibrary}><Search size={17}/><span>Search</span></button>
             <button className="icon-button theme-toggle" aria-label={`Use ${data.settings.theme==='dark'?'light':'dark'} mode`} onClick={()=>mutate('/api/settings','PUT',{theme:data.settings.theme==='dark'?'light':'dark'})}>{data.settings.theme==='dark'?<Sun size={17}/>:<Moon size={17}/>}</button>
             <button className="export-button" aria-label="Export study backup" onClick={async()=>{try{download(await api('/api/export'))}catch(error){notify(error.message)}}}><Download size={15}/><span>Export records</span></button>
+          </div>
+        </div>
+        <nav className="primary-nav" aria-label="Primary navigation">{globalNavigation.map(item=>{const Icon=navigationIcons[item.id];const active=activeNavigation.activeId===item.id;return <button key={item.id} data-view={item.id} aria-label={item.label} aria-current={active?'page':undefined} className={`primary-nav-item ${active?'active':''}`} onClick={()=>navigate(item.id,item.id==='library'?{subject:'all',topic:'all',subtopic:'all',search:'',savedOnly:false}:item.id==='material'?{materialDay:null,materialSectionId:null}:{})}><Icon size={17}/><span>{item.label}</span></button>})}</nav>
+      </header>
+      <div className="app-main">
+        <header className="topbar">
+          {view==='desk'?<div className="welcome-header"><span className="welcome-avatar">{data.settings.name.slice(0,1).toUpperCase()}</span><div><h1>Hello {data.settings.name}!</h1><p>Let's prepare for your next opportunity.</p></div></div>:<div className="breadcrumbs"><span>Workspace</span><ChevronRight size={12}/><strong>{labels[view]||'Questions & answers'}</strong></div>}
+          <div className="topbar-right">
             {focus&&<button className="subtle-button" onClick={()=>dispatch(patch({focus:false}))}><Minimize2 size={15}/>Exit focus</button>}
           </div>
         </header>
     {timer&&<div className="focus-hud" role="region" aria-label="Active focus timer"><span className="hud-icon"><Target size={19}/></span><div className="hud-context"><strong>{data.subjects.find(s=>s.id===timer.subject)?.name} focus</strong><span>{timer.startedAt?'In progress':'Paused · not yet recorded'}</span></div><strong className="hud-time">{String(Math.floor(elapsed/60000)).padStart(2,'0')}<span>:</span>{String(Math.floor(elapsed/1000)%60).padStart(2,'0')}</strong><button className="hud-play" aria-label={timer.startedAt?'Pause focus timer':'Start focus timer'} onClick={()=>startTimer()}>{timer.startedAt?<Pause size={16}/>:<Play size={16}/>}</button><button className="hud-finish" onClick={finishTimer}>Finish <Check size={14}/></button><button className="hud-discard" aria-label="Discard unrecorded timer" onClick={()=>{if(elapsed<60000||window.confirm('Discard this unrecorded timer? Your saved study records will not change.'))setTimer(null)}}><X size={15}/></button></div>}
         <main id="main" tabIndex={-1}><AnimatePresence mode="wait" initial={false}><motion.div className={`view-canvas ${view==='desk'?'desk-canvas':''}`} key={view} initial={reduced?false:{opacity:0}} animate={{opacity:1}} exit={{opacity:reduced?1:0}} transition={{duration:reduced?0:.14}}>
-          {view==='desk'&&<Overview data={data} current={current} dayComplete={dayComplete} onNavigate={navigate} onOpen={openQuestion} onStart={startTimer} onLog={()=>setModal({type:'session'})} renderQuestion={(q,index)=><QuestionRow key={q.id} q={q} data={data} index={index}/>}/>}
+          {view==='desk'&&<Overview data={data} current={current} onNavigate={navigate} onOpen={openQuestion} onStart={startTimer} onLog={()=>setModal({type:'session'})} renderQuestion={(q,index)=><QuestionRow key={q.id} q={q} data={data} index={index}/>}/>}
           {view==='library'&&<QuestionLibrary data={data} renderSubjectIcon={id=><SubjectIcon id={id} size={15}/>} renderQuestion={(q,index)=><QuestionRow key={q.id} q={q} data={data} index={index}/>}/>}
           {view==='material'&&<Suspense fallback={<div className="material-loading"><NotebookTabs size={22}/><span>Opening study material…</span></div>}><StudyMaterial key={`${state.materialDay||'resume'}-${state.materialSectionId||''}`} data={data} initialDay={state.materialDay} initialSectionId={state.materialSectionId} onExit={()=>navigate('desk')} onTheme={()=>mutate('/api/settings','PUT',{theme:data.settings.theme==='dark'?'light':'dark'})} onNavigate={navigate}/></Suspense>} 
           {view==='notes'&&<Suspense fallback={<div className="material-loading"><NotebookPen size={22}/><span>Opening your notes…</span></div>}><Notes data={data} onExit={()=>navigate('desk')} onTheme={()=>mutate('/api/settings','PUT',{theme:data.settings.theme==='dark'?'light':'dark'})}/></Suspense>}
